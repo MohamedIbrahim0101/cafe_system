@@ -17,6 +17,7 @@ class CategoriesScreen extends StatefulWidget {
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
   final _nameController = TextEditingController();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isUploading = false;
   String? _uploadedImageUrl;
 
@@ -31,50 +32,42 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     final categoryProvider = context.watch<CategoryProvider>();
     final authProvider = context.watch<AuthProvider>();
 
+    // تحديد إذا كانت الشاشة موبايل (أصغر من 900 بكسل)
+    final bool isMobile = MediaQuery.of(context).size.width < 900;
+
     return Scaffold(
+      key: _scaffoldKey, // المفتاح لفتح الـ Drawer برمجياً
       backgroundColor: const Color(0xFFF8F9FA),
+
+      // السايد بار يظهر كـ Drawer فقط في الموبايل
+      drawer:
+          isMobile ? Drawer(child: _buildSidebar(context, authProvider)) : null,
+
       body: Row(
         children: [
-          _buildSidebar(context, authProvider),
+          // السايد بار يظهر ثابت فقط في شاشات الكمبيوتر
+          if (!isMobile) _buildSidebar(context, authProvider),
+
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(context),
-                  const SizedBox(height: 32),
-                  Expanded(
-                    child: categoryProvider.isLoading
-                        ? const Center(
-                            child: CircularProgressIndicator(
-                                color: Color(0xFF00B686)))
-                        : LayoutBuilder(
-                            builder: (context, constraints) {
-                              // حساب عدد الأعمدة بناءً على المساحة المتاحة
-                              int crossAxisCount = constraints.maxWidth > 1200
-                                  ? 5
-                                  : constraints.maxWidth > 800
-                                      ? 3
-                                      : 2;
-                              return GridView.builder(
-                                gridDelegate:
-                                    SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  childAspectRatio: 0.85,
-                                  crossAxisSpacing: 20,
-                                  mainAxisSpacing: 20,
-                                ),
-                                itemCount: categoryProvider.categories.length,
-                                itemBuilder: (context, index) {
-                                  return _buildCategoryCard(
-                                      categoryProvider.categories[index]);
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ],
+            child: SafeArea(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 16 : 32,
+                    vertical: isMobile ? 16 : 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(context, isMobile),
+                    const SizedBox(height: 32),
+                    Expanded(
+                      child: categoryProvider.isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                  color: Color(0xFF00B686)))
+                          : _buildCategoryGrid(categoryProvider, isMobile),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -83,44 +76,84 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 16,
-      runSpacing: 16,
+  // الهيدر المحتوي على زر الـ Hamburger Menu للموبايل
+  Widget _buildHeader(BuildContext context, bool isMobile) {
+    return Row(
       children: [
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Categories",
+        if (isMobile)
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: IconButton(
+              // أيقونة المنيو (التي سألت عنها)
+              icon:
+                  const Icon(Icons.menu_rounded, size: 28, color: Colors.black),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            ),
+          ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Categories",
                 style: TextStyle(
-                    fontSize: 28,
+                    fontSize: isMobile ? 22 : 28,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A1C1E))),
-            Text("Manage your menu categories and images",
-                style: TextStyle(color: Colors.grey, fontSize: 14)),
-          ],
+                    color: const Color(0xFF1A1C1E)),
+              ),
+              if (!isMobile)
+                const Text("Manage your menu categories and images",
+                    style: TextStyle(color: Colors.grey, fontSize: 14)),
+            ],
+          ),
         ),
         ElevatedButton.icon(
           onPressed: () => _showCategoryDialog(context, null),
-          icon: const Icon(Icons.add),
-          label: const Text("Add Category"),
+          icon: const Icon(Icons.add_rounded, size: 20),
+          label: Text(isMobile ? "Add" : "Add Category"),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF00B686),
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 15 : 20, vertical: isMobile ? 12 : 18),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
           ),
         ),
       ],
     );
   }
 
+  Widget _buildCategoryGrid(CategoryProvider provider, bool isMobile) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        int crossAxisCount = 2;
+        if (constraints.maxWidth > 1200) {
+          crossAxisCount = 5;
+        } else if (constraints.maxWidth > 850) {
+          crossAxisCount = 3;
+        } else if (constraints.maxWidth < 450) {
+          crossAxisCount = 1;
+        }
+
+        return GridView.builder(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            childAspectRatio: 0.85,
+            crossAxisSpacing: 20,
+            mainAxisSpacing: 20,
+          ),
+          itemCount: provider.categories.length,
+          itemBuilder: (context, index) =>
+              _buildCategoryCard(provider.categories[index]),
+        );
+      },
+    );
+  }
+
   Widget _buildCategoryCard(CategoryModel category) {
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -132,61 +165,147 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         ],
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Image Container
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F3F5),
-                shape: BoxShape.circle,
-                image: category.imageUrl != null
-                    ? DecorationImage(
-                        image: NetworkImage(category.imageUrl!),
-                        fit: BoxFit.cover)
+            child: Padding(
+              padding: const EdgeInsets.all(15.0),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F9FA),
+                  shape: BoxShape.circle,
+                  image: category.imageUrl != null
+                      ? DecorationImage(
+                          image: NetworkImage(category.imageUrl!),
+                          fit: BoxFit.cover)
+                      : null,
+                ),
+                child: category.imageUrl == null
+                    ? const Icon(Icons.category_rounded,
+                        size: 40, color: Colors.grey)
                     : null,
               ),
-              child: category.imageUrl == null
-                  ? const Center(
-                      child: Icon(Icons.category_outlined,
-                          size: 30, color: Colors.grey))
-                  : null,
             ),
           ),
-          const SizedBox(height: 12),
-          // Name with protection against overflow
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(category.name,
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(
+            category.name,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 8),
-          // Actions
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                icon: const Icon(Icons.edit_outlined,
-                    size: 18, color: Colors.blueGrey),
+                icon:
+                    const Icon(Icons.edit_note_rounded, color: Colors.blueGrey),
                 onPressed: () => _showCategoryDialog(context, category),
               ),
-              const SizedBox(width: 12),
               IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                icon: const Icon(Icons.delete_outline,
-                    size: 18, color: Colors.redAccent),
+                icon: const Icon(Icons.delete_outline_rounded,
+                    color: Colors.redAccent),
                 onPressed: () => _confirmDelete(category),
               ),
             ],
-          )
+          ),
+          const SizedBox(height: 10),
         ],
       ),
     );
   }
+
+  // ميثود القائمة الجانبية (Sidebar)
+  Widget _buildSidebar(BuildContext context, AuthProvider authProvider) {
+    final String location = GoRouterState.of(context).uri.toString();
+
+    return Container(
+      width: 260,
+      height: double.infinity,
+      color: Colors.white,
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Text("Romdol.",
+                style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF00B686))),
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                _sidebarItem(
+                    context,
+                    authProvider,
+                    Icons.grid_view_rounded,
+                    "Dashboard",
+                    "/admin/dashboard",
+                    location.contains("dashboard")),
+                _sidebarItem(context, authProvider, Icons.shopping_bag_outlined,
+                    "Orders", "/admin/orders", location.contains("orders")),
+                _sidebarItem(
+                    context,
+                    authProvider,
+                    Icons.fastfood_outlined,
+                    "Products",
+                    "/admin/products",
+                    location.contains("products")),
+                _sidebarItem(
+                    context,
+                    authProvider,
+                    Icons.category_rounded,
+                    "Categories",
+                    "/admin/categories",
+                    location.contains("categories")),
+              ],
+            ),
+          ),
+          const Divider(indent: 20, endIndent: 20),
+          _sidebarItem(context, authProvider, Icons.logout_rounded, "Logout",
+              "/admin/login", false,
+              isLogout: true),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _sidebarItem(BuildContext context, AuthProvider authProvider,
+      IconData icon, String label, String route, bool isActive,
+      {bool isLogout = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ListTile(
+        onTap: () async {
+          if (isLogout) {
+            await authProvider.logout();
+            if (mounted) context.go(route);
+          } else {
+            // إغلاق المنيو في الموبايل عند اختيار صفحة
+            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+              Navigator.pop(context);
+            }
+            context.go(route);
+          }
+        },
+        leading: Icon(icon,
+            color: isActive ? const Color(0xFF00B686) : Colors.grey[400],
+            size: 22),
+        title: Text(label,
+            style: TextStyle(
+                color: isActive ? const Color(0xFF00B686) : Colors.grey[700],
+                fontSize: 15,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.w500)),
+        tileColor: isActive
+            ? const Color(0xFF00B686).withOpacity(0.08)
+            : Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        dense: true,
+      ),
+    );
+  }
+
+  // --- دوال العمليات (Dialog & Delete) ---
 
   void _showCategoryDialog(BuildContext context, CategoryModel? category) {
     final bool isEdit = category != null;
@@ -201,55 +320,56 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Text(isEdit ? "Edit Category" : "Add New Category"),
-          content: SizedBox(
-            width: 400, // Fixed width for dialog on web/desktop
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: () async {
-                    final picker = ImagePicker();
-                    final file =
-                        await picker.pickImage(source: ImageSource.gallery);
-                    if (file != null) {
-                      setDialogState(() => _isUploading = true);
-                      final bytes = await file.readAsBytes();
-                      final url = await CloudinaryService.uploadImage(
-                          bytes, file.name, "categories");
-                      setDialogState(() {
-                        _uploadedImageUrl = url;
-                        _isUploading = false;
-                      });
-                    }
-                  },
-                  child: Container(
-                    height: 100,
-                    width: 100,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey[300]!),
+          content: SingleChildScrollView(
+            child: SizedBox(
+              width: 350,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () async {
+                      final picker = ImagePicker();
+                      final file =
+                          await picker.pickImage(source: ImageSource.gallery);
+                      if (file != null) {
+                        setDialogState(() => _isUploading = true);
+                        final bytes = await file.readAsBytes();
+                        final url = await CloudinaryService.uploadImage(
+                            bytes, file.name, "categories");
+                        setDialogState(() {
+                          _uploadedImageUrl = url;
+                          _isUploading = false;
+                        });
+                      }
+                    },
+                    child: Container(
+                      height: 100,
+                      width: 100,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: _isUploading
+                          ? const Center(child: CircularProgressIndicator())
+                          : _uploadedImageUrl != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(50),
+                                  child: Image.network(_uploadedImageUrl!,
+                                      fit: BoxFit.cover))
+                              : const Icon(Icons.add_a_photo,
+                                  color: Colors.grey),
                     ),
-                    child: _isUploading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _uploadedImageUrl != null
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(50),
-                                child: Image.network(_uploadedImageUrl!,
-                                    fit: BoxFit.cover))
-                            : const Icon(Icons.add_a_photo, color: Colors.grey),
                   ),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: "Category Name",
-                    border: OutlineInputBorder(),
-                    hintText: "e.g. Burgers, Pizza...",
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                        labelText: "Category Name",
+                        border: OutlineInputBorder()),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -264,7 +384,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                         final data = {
                           'name': _nameController.text,
                           'imageUrl': _uploadedImageUrl,
-                          'updatedAt': DateTime.now(),
+                          'updatedAt': DateTime.now()
                         };
                         if (isEdit) {
                           await FirebaseService.categories
@@ -280,7 +400,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF00B686),
                   foregroundColor: Colors.white),
-              child: const Text("Save Category"),
+              child: const Text("Save"),
             ),
           ],
         ),
@@ -293,7 +413,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Delete Category"),
-        content: Text("Delete '${category.name}'? This cannot be undone."),
+        content: Text("Delete '${category.name}'?"),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
@@ -306,98 +426,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             child: const Text("Delete", style: TextStyle(color: Colors.white)),
           )
         ],
-      ),
-    );
-  }
-
-  Widget _buildSidebar(BuildContext context, AuthProvider authProvider) {
-    final String location = GoRouterState.of(context).uri.toString();
-    return Container(
-      width: 260,
-      color: Colors.white,
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 32),
-            child: Text("Romdol.",
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00B686))),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  _sidebarItem(
-                      context,
-                      authProvider,
-                      Icons.grid_view_rounded,
-                      "Dashboard",
-                      "/admin/dashboard",
-                      location == "/admin/dashboard"),
-                  _sidebarItem(
-                      context,
-                      authProvider,
-                      Icons.shopping_cart_outlined,
-                      "Orders",
-                      "/admin/orders",
-                      location == "/admin/orders"),
-                  _sidebarItem(
-                      context,
-                      authProvider,
-                      Icons.fastfood_outlined,
-                      "Products",
-                      "/admin/products",
-                      location == "/admin/products"),
-                  _sidebarItem(
-                      context,
-                      authProvider,
-                      Icons.category_outlined,
-                      "Categories",
-                      "/admin/categories",
-                      location == "/admin/categories"),
-                ],
-              ),
-            ),
-          ),
-          const Divider(),
-          _sidebarItem(context, authProvider, Icons.logout_rounded, "Logout",
-              "/admin/login", false,
-              isLogout: true),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _sidebarItem(BuildContext context, AuthProvider authProvider,
-      IconData icon, String label, String route, bool isActive,
-      {bool isLogout = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        onTap: () async {
-          if (isLogout) {
-            await authProvider.logout();
-            if (context.mounted) context.go(route);
-          } else {
-            context.go(route);
-          }
-        },
-        leading: Icon(icon,
-            color: isActive ? const Color(0xFF00B686) : Colors.grey[400],
-            size: 20),
-        title: Text(label,
-            style: TextStyle(
-                color: isActive ? Colors.black : Colors.grey[600],
-                fontSize: 14,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
-        tileColor: isActive
-            ? const Color(0xFF00B686).withOpacity(0.08)
-            : Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        dense: true,
       ),
     );
   }

@@ -19,7 +19,7 @@ class ProductDetailsScreen extends StatefulWidget {
 }
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
-  int qty = 1; // نقلناها للـ State عشان الـ UI يتحدث فوراً
+  int qty = 1;
 
   @override
   Widget build(BuildContext context) {

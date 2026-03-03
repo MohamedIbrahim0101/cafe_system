@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../state/cart_provider.dart';
+import '../../state/order_provider.dart';
 import '../../core/models/order_model.dart';
 import '../../core/services/firebase_service.dart';
-import '../../app/constants.dart';
 
 class CartScreen extends StatelessWidget {
   final int tableNumber;
@@ -16,13 +16,13 @@ class CartScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cartProvider = context.watch<CartProvider>();
     const Color primaryColor = Color(0xFF00B686);
-    const Color noonDark = Color(0xFF2D2D2D);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7), // نفس خلفية المنيو
+      // خلفية التطبيق رمادي فاتح جداً لتبرز البطاقات البيضاء
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0.5,
+        elevation: 0,
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new,
@@ -32,19 +32,24 @@ class CartScreen extends StatelessWidget {
         title: Text(
           "MY BASKET",
           style: GoogleFonts.poppins(
-            color: Colors.black,
+            color: Colors.black, // أسود صريح
             fontWeight: FontWeight.bold,
-            fontSize: 15,
-            letterSpacing: 1.1,
+            fontSize: 16,
+            letterSpacing: 1.2,
           ),
         ),
         actions: [
           if (cartProvider.items.isNotEmpty)
-            TextButton(
-              onPressed: () => _showClearConfirm(context, cartProvider),
-              child: const Text("Clear",
-                  style: TextStyle(
-                      color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: TextButton(
+                onPressed: () => _showClearConfirm(context, cartProvider),
+                child: const Text("Clear",
+                    style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13)),
+              ),
             )
         ],
       ),
@@ -52,111 +57,151 @@ class CartScreen extends StatelessWidget {
           ? _buildEmptyState(context)
           : Column(
               children: [
-                // إشعار بسيط بخصوص الطاولة
+                // ترويسة رقم الطاولة (حاوية بيضاء وكلام أسود)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  color: primaryColor.withOpacity(0.1),
-                  child: Text(
-                    "Ordering for Table $tableNumber",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: primaryColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border:
+                        Border(bottom: BorderSide(color: Color(0xFFEEEEEE))),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.table_restaurant,
+                          size: 16, color: Colors.black),
+                      const SizedBox(width: 8),
+                      Text(
+                        "TABLE: $tableNumber",
+                        style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900),
+                      ),
+                    ],
                   ),
                 ),
-                // قائمة المنتجات
                 Expanded(
-                  child: ListView.separated(
+                  child: ListView(
                     padding: const EdgeInsets.all(16),
-                    itemCount: cartProvider.items.length,
-                    separatorBuilder: (ctx, i) => const SizedBox(height: 12),
-                    itemBuilder: (ctx, i) {
-                      final item = cartProvider.items[i];
-                      return _buildNoonCartItem(
-                          item, cartProvider, primaryColor);
-                    },
+                    children: [
+                      // قائمة المنتجات
+                      ...cartProvider.items.map((item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 15.0),
+                            child: _buildNoonCartItem(item, cartProvider),
+                          )),
+
+                      const SizedBox(height: 100),
+                    ],
                   ),
                 ),
-                // ملخص الفاتورة وزر التأكيد
-                _buildNoonCheckoutPanel(
-                    context, cartProvider, primaryColor, noonDark),
+                _buildNoonCheckoutPanel(context, cartProvider, primaryColor),
               ],
             ),
     );
   }
 
-  Widget _buildNoonCartItem(
-      dynamic item, CartProvider provider, Color primary) {
+  Widget _buildNoonCartItem(dynamic item, CartProvider provider) {
     return Container(
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
+        color: Colors.white, // الحاوية بيضاء
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 4))
+        ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          // الصورة
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Image.network(
-              item.imageUrl,
-              width: 60,
-              height: 60,
-              fit: BoxFit.cover,
-            ),
-          ),
-          const SizedBox(width: 12),
-          // بيانات المنتج
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'USD ${item.price.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
-          ),
-          // التحكم في الكمية (Noon Style)
-          Container(
-            height: 35,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(4),
-            ),
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                IconButton(
-                  onPressed: () => provider.updateQuantity(
-                      item.productId, item.quantity - 1),
-                  icon: const Icon(Icons.remove, size: 14),
-                  constraints: const BoxConstraints(minWidth: 30),
-                  padding: EdgeInsets.zero,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(item.imageUrl,
+                      width: 75, height: 75, fit: BoxFit.cover),
                 ),
-                Text('${item.quantity}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 13)),
-                IconButton(
-                  onPressed: () => provider.updateQuantity(
-                      item.productId, item.quantity + 1),
-                  icon: const Icon(Icons.add, size: 14),
-                  constraints: const BoxConstraints(minWidth: 30),
-                  padding: EdgeInsets.zero,
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: Colors.black // أسود صريح
+                            ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'EGP ${item.price.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+                // تحكم الكمية
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF2F2F7),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.remove,
+                            size: 16, color: Colors.black),
+                        onPressed: () => provider.updateQuantity(
+                            item.productId, item.quantity - 1),
+                      ),
+                      Text('${item.quantity}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black)),
+                      IconButton(
+                        icon: const Icon(Icons.add,
+                            size: 16, color: Colors.black),
+                        onPressed: () => provider.updateQuantity(
+                            item.productId, item.quantity + 1),
+                      ),
+                    ],
+                  ),
                 ),
               ],
+            ),
+          ),
+          // خانة ملحوظة الصنف (Item Specific Note)
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9F9F9), // خلفية المربع فاتحة جداً
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE0E0E0)),
+            ),
+            child: TextField(
+              onChanged: (val) => provider.updateItemNote(item.productId, val),
+              // الكلام أسود صريح وعريض
+              style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold),
+              cursorColor: Colors.black,
+              decoration: const InputDecoration(
+                hintText: "Special request (no onion, extra sauce...)",
+                hintStyle: TextStyle(fontSize: 12, color: Colors.white),
+                border: InputBorder.none,
+                icon: Icon(Icons.edit_note, size: 18, color: Colors.black),
+              ),
             ),
           ),
         ],
@@ -165,58 +210,64 @@ class CartScreen extends StatelessWidget {
   }
 
   Widget _buildNoonCheckoutPanel(
-      BuildContext context, CartProvider cart, Color primary, Color dark) {
+      BuildContext context, CartProvider cart, Color primary) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 35),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.white, // الحاوية بيضاء
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 20,
               offset: const Offset(0, -5))
         ],
       ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Order Total",
-                    style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500)),
-                Text("USD ${cart.totalPrice.toStringAsFixed(2)}",
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w900)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: dark,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  elevation: 0,
-                ),
-                onPressed: () => _processOrder(context, cart),
-                child: const Text(
-                  'CONFIRM ORDER',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("TOTAL AMOUNT",
                   style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2),
-                ),
+                      color: Colors.black,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold)),
+              Text("EGP ${cart.totalPrice.toStringAsFixed(2)}",
+                  style: GoogleFonts.poppins(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black)),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primary, // لون الزر الرئيسي
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15)),
+                elevation: 0,
+              ),
+              onPressed: () => _processOrder(context, cart),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('CONFIRM ORDER',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2)),
+                  SizedBox(width: 10),
+                  Icon(Icons.arrow_forward, color: Colors.white, size: 18),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -226,16 +277,19 @@ class CartScreen extends StatelessWidget {
         context: context,
         barrierDismissible: false,
         builder: (_) => const Center(
-            child: CircularProgressIndicator(color: Colors.black)));
+            child: CircularProgressIndicator(color: Color(0xFF00B686))));
 
     try {
-      final orderId = DateTime.now().millisecondsSinceEpoch.toString();
+      final orderId =
+          "ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}";
+
       final orderItems = cart.items
           .map((item) => OrderItem(
                 productId: item.productId,
                 name: item.name,
                 quantity: item.quantity,
                 price: item.price,
+                notes: item.notes,
               ))
           .toList();
 
@@ -249,10 +303,11 @@ class CartScreen extends StatelessWidget {
       );
 
       await FirebaseService.createOrder(order);
-      cart.clear();
 
       if (context.mounted) {
-        Navigator.pop(context); // إغلاق اللودنج
+        await context.read<OrderProvider>().saveOrderLocally(orderId);
+        cart.clear();
+        Navigator.pop(context);
         context.push('/order-status/$orderId');
       }
     } catch (e) {
@@ -269,22 +324,26 @@ class CartScreen extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.shopping_basket_outlined,
-              size: 100, color: Colors.grey.shade300),
-          const SizedBox(height: 16),
+          const Icon(Icons.shopping_basket_outlined,
+              size: 80, color: Colors.black26),
+          const SizedBox(height: 20),
           Text("Your basket is empty",
-              style: GoogleFonts.poppins(color: Colors.grey, fontSize: 16)),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: 200,
-            child: OutlinedButton(
-              onPressed: () => context.pop(),
-              style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.black)),
-              child: const Text("START SHOPPING",
-                  style: TextStyle(
-                      color: Colors.black, fontWeight: FontWeight.bold)),
+              style: GoogleFonts.poppins(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 30),
+          ElevatedButton(
+            onPressed: () => context.pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
+            child: const Text("BROWSE MENU",
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
           )
         ],
       ),
@@ -295,20 +354,23 @@ class CartScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        title: const Text("Clear Basket?"),
-        content: const Text("Are you sure you want to remove all items?"),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text("Clear Basket?",
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        content: const Text("Remove all items from your basket?",
+            style: TextStyle(color: Colors.black87)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child:
-                  const Text("CANCEL", style: TextStyle(color: Colors.grey))),
+              child: const Text("CANCEL",
+                  style: TextStyle(color: Colors.black54))),
           TextButton(
               onPressed: () {
                 provider.clear();
                 Navigator.pop(ctx);
               },
-              child: const Text("CLEAR",
+              child: const Text("YES, CLEAR",
                   style: TextStyle(
                       color: Colors.red, fontWeight: FontWeight.bold))),
         ],

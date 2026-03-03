@@ -20,7 +20,7 @@ class CategoryProvider extends ChangeNotifier {
         _categories = snapshot.docs
             .map((doc) => CategoryModel.fromSnapshot(doc))
             .toList();
-        
+
         // بمجرد وصول أول نسخة من البيانات، نوقف حالة التحميل
         _isLoading = false;
         notifyListeners();

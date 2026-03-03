@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:premium_store/admin/screens/add_product_screen.dart';
-import 'package:premium_store/core/models/product_model.dart';
-import 'package:premium_store/core/services/firebase_service.dart';
-import 'package:premium_store/state/product_brovider.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../state/auth_brovider.dart';
+import '../../state/product_brovider.dart';
+import '../../core/models/product_model.dart';
+import '../../core/services/firebase_service.dart';
+import 'add_product_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -15,65 +15,48 @@ class ProductsScreen extends StatefulWidget {
 }
 
 class _ProductsScreenState extends State<ProductsScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final Color brandGreen = const Color(0xFF00B686);
+
   @override
   Widget build(BuildContext context) {
     final productProvider = context.watch<ProductProvider>();
     final authProvider = context.watch<AuthProvider>();
 
+    // فحص حجم الشاشة
+    final bool isMobile = MediaQuery.of(context).size.width < 900;
+
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFFF8F9FA),
+      // الدرور للموبايل فقط
+      drawer:
+          isMobile ? Drawer(child: _buildSidebar(context, authProvider)) : null,
       body: Row(
         children: [
-          // Sidebar ثابت العرض مع إمكانية التمرير داخلياً
-          _buildSidebar(context, authProvider),
+          // السايد بار الثابت للكمبيوتر فقط
+          if (!isMobile) _buildSidebar(context, authProvider),
 
           Expanded(
-            child: Padding(
-              padding:
-                  const EdgeInsets.all(24.0), // تقليل البادينج قليلاً للمساحة
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(context),
-                  const SizedBox(height: 24),
-
-                  // منطقة المنتجات مع التعامل مع أحجام الشاشة المختلفة
-                  Expanded(
-                    child: productProvider.isLoading
-                        ? const Center(
-                            child: CircularProgressIndicator(
-                                color: Color(0xFF00B686)))
-                        : productProvider.products.isEmpty
-                            ? _buildEmptyState()
-                            : LayoutBuilder(
-                                builder: (context, constraints) {
-                                  // تغيير عدد الأعمدة ديناميكياً بناءً على المساحة المتاحة
-                                  int crossAxisCount =
-                                      constraints.maxWidth > 1200
-                                          ? 4
-                                          : constraints.maxWidth > 800
-                                              ? 3
-                                              : 2;
-
-                                  return GridView.builder(
-                                    gridDelegate:
-                                        SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: crossAxisCount,
-                                      childAspectRatio:
-                                          0.75, // نسبة العرض للارتفاع لمنع التكدس
-                                      crossAxisSpacing: 20,
-                                      mainAxisSpacing: 20,
-                                    ),
-                                    itemCount: productProvider.products.length,
-                                    itemBuilder: (context, index) {
-                                      return _buildProductCard(
-                                          productProvider.products[index]);
-                                    },
-                                  );
-                                },
-                              ),
-                  ),
-                ],
+            child: SafeArea(
+              child: Padding(
+                padding: EdgeInsets.all(isMobile ? 16.0 : 30.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(context, isMobile),
+                    const SizedBox(height: 25),
+                    Expanded(
+                      child: productProvider.isLoading
+                          ? Center(
+                              child:
+                                  CircularProgressIndicator(color: brandGreen))
+                          : productProvider.products.isEmpty
+                              ? _buildEmptyState()
+                              : _buildProductGrid(productProvider.products),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -82,36 +65,41 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return Wrap(
-      // استخدام Wrap بدلاً من Row لمنع الـ Overflow عند صغر العرض
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 16,
-      runSpacing: 16,
+  Widget _buildHeader(BuildContext context, bool isMobile) {
+    return Row(
       children: [
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Products Management",
-                style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A1C1E))),
-            Text("Manage your menu items",
-                style: TextStyle(color: Colors.grey, fontSize: 14)),
-          ],
+        if (isMobile)
+          IconButton(
+            icon: const Icon(Icons.menu_rounded, size: 28),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          ),
+        if (isMobile) const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Products Management",
+                  style: TextStyle(
+                      fontSize: isMobile ? 20 : 28,
+                      fontWeight: FontWeight.w900)),
+              if (!isMobile)
+                Text("Manage and track your restaurant menu",
+                    style: TextStyle(color: Colors.grey.shade600)),
+            ],
+          ),
         ),
         ElevatedButton.icon(
           onPressed: () => _navigateToEdit(context, null),
-          icon: const Icon(Icons.add, size: 20),
-          label: const Text("Add Product"),
+          icon: const Icon(Icons.add_rounded, size: 20, color: Colors.white),
+          label: Text(isMobile ? "Add" : "Add Product",
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold)),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF00B686),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            backgroundColor: brandGreen,
+            padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 12 : 20, vertical: 15),
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 0,
           ),
         ),
@@ -119,11 +107,32 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
+  Widget _buildProductGrid(List<Product> products) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        double width = constraints.maxWidth;
+        int crossAxisCount = (width / 220).floor(); // حساب تلقائي لعدد الأعمدة
+        if (crossAxisCount < 2) crossAxisCount = 2;
+
+        return GridView.builder(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            childAspectRatio: 0.75,
+            crossAxisSpacing: 20,
+            mainAxisSpacing: 20,
+          ),
+          itemCount: products.length,
+          itemBuilder: (context, index) => _buildProductCard(products[index]),
+        );
+      },
+    );
+  }
+
   Widget _buildProductCard(Product product) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
               color: Colors.black.withOpacity(0.03),
@@ -134,96 +143,81 @@ class _ProductsScreenState extends State<ProductsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // جزء الصورة
           Expanded(
-            flex: 5,
             child: Stack(
               children: [
                 Positioned.fill(
                   child: ClipRRect(
                     borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(16)),
+                        const BorderRadius.vertical(top: Radius.circular(20)),
                     child: Image.network(
                       product.imageUrl,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                           color: Colors.grey[100],
-                          child: const Icon(Icons.broken_image,
-                              color: Colors.grey)),
+                          child:
+                              const Icon(Icons.fastfood, color: Colors.grey)),
                     ),
                   ),
                 ),
                 Positioned(
-                  top: 8,
-                  right: 8,
-                  child: _buildAvailabilityTag(product.isAvailable),
-                ),
+                    top: 10,
+                    right: 10,
+                    child: _buildAvailabilityTag(product.isAvailable)),
               ],
             ),
           ),
-          // جزء البيانات
-          Expanded(
-            flex: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(product.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  FittedBox(
-                    // يضمن أن السعر لن يخرج عن الحاوية أبداً
-                    fit: BoxFit.scaleDown,
-                    child: Text("\$${product.price.toStringAsFixed(2)}",
-                        style: const TextStyle(
-                            color: Color(0xFF00B686),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16)),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 36,
-                          child: OutlinedButton(
-                            onPressed: () => _navigateToEdit(context, product),
-                            style: OutlinedButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              side: BorderSide(color: Colors.grey.shade200),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
-                            ),
-                            child: const Text("Edit",
-                                style: TextStyle(
-                                    fontSize: 12, color: Colors.blueGrey)),
-                          ),
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(product.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 4),
+                Text("\$${product.price.toStringAsFixed(2)}",
+                    style: TextStyle(
+                        color: brandGreen,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => _navigateToEdit(context, product),
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.blue.withOpacity(0.05),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
                         ),
+                        child: const Text("Edit",
+                            style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12)),
                       ),
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(8)),
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          onPressed: () => _confirmDelete(context, product),
-                          icon: const Icon(Icons.delete_outline,
-                              color: Colors.redAccent, size: 18),
-                        ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 35,
+                      decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            color: Colors.red, size: 18),
+                        onPressed: () => _confirmDelete(context, product),
                       ),
-                    ],
-                  )
-                ],
-              ),
+                    )
+                  ],
+                )
+              ],
             ),
-          ),
+          )
         ],
       ),
     );
@@ -231,22 +225,105 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Widget _buildAvailabilityTag(bool isAvailable) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isAvailable
-            ? Colors.green.withOpacity(0.9)
-            : Colors.red.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(6),
+        color: isAvailable ? brandGreen : Colors.redAccent,
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        isAvailable ? "Available" : "Sold Out",
-        style: const TextStyle(
-            color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+      child: Text(isAvailable ? "Available" : "Sold Out",
+          style: const TextStyle(
+              color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildSidebar(BuildContext context, AuthProvider authProvider) {
+    final String location = GoRouterState.of(context).uri.toString();
+    return Container(
+      width: 260,
+      height: double.infinity,
+      color: Colors.white,
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Text("Romdol.",
+                style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF00B686))),
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                _sidebarItem(
+                    context,
+                    authProvider,
+                    Icons.grid_view_rounded,
+                    "Dashboard",
+                    "/admin/dashboard",
+                    location.contains("dashboard")),
+                _sidebarItem(context, authProvider, Icons.shopping_bag_outlined,
+                    "Orders", "/admin/orders", location.contains("orders")),
+                _sidebarItem(
+                    context,
+                    authProvider,
+                    Icons.fastfood_outlined,
+                    "Products",
+                    "/admin/products",
+                    location.contains("products")),
+                _sidebarItem(
+                    context,
+                    authProvider,
+                    Icons.category_rounded,
+                    "Categories",
+                    "/admin/categories",
+                    location.contains("categories")),
+                _sidebarItem(context, authProvider, Icons.table_bar_outlined,
+                    "Tables", "/admin/tables", location.contains("tables")),
+              ],
+            ),
+          ),
+          const Divider(indent: 20, endIndent: 20),
+          _sidebarItem(context, authProvider, Icons.logout_rounded, "Logout",
+              "/admin/login", false,
+              isLogout: true),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
 
-  // الميثودات المساعدة (تأكد من وجودها في الكلاس)
+  Widget _sidebarItem(BuildContext context, AuthProvider authProvider,
+      IconData icon, String label, String route, bool isActive,
+      {bool isLogout = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ListTile(
+        onTap: () async {
+          if (isLogout) {
+            await authProvider.logout();
+            if (mounted) context.go(route);
+          } else {
+            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+              Navigator.pop(context);
+            }
+            context.go(route);
+          }
+        },
+        leading: Icon(icon,
+            color: isActive ? brandGreen : Colors.grey[400], size: 22),
+        title: Text(label,
+            style: TextStyle(
+                color: isActive ? brandGreen : Colors.grey[700],
+                fontSize: 15,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.w500)),
+        tileColor: isActive ? brandGreen.withOpacity(0.08) : Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        dense: true,
+      ),
+    );
+  }
+
   void _navigateToEdit(BuildContext context, Product? product) {
     Navigator.push(
         context,
@@ -258,8 +335,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Delete Product"),
-        content: Text("Delete '${product.name}'?"),
+        content: Text("Are you sure you want to delete '${product.name}'?"),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
@@ -267,9 +345,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
           ElevatedButton(
             onPressed: () async {
               await FirebaseService.products.doc(product.id).delete();
-              if (context.mounted) Navigator.pop(context);
+              if (mounted) Navigator.pop(context);
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10))),
             child: const Text("Delete", style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -282,84 +363,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[300]),
-          const Text("No products found", style: TextStyle(color: Colors.grey)),
+          Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey[200]),
+          const SizedBox(height: 16),
+          const Text("No products found",
+              style: TextStyle(color: Colors.grey, fontSize: 16)),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSidebar(BuildContext context, AuthProvider auth) {
-    final String location = GoRouterState.of(context).uri.toString();
-    return Container(
-      width: 260,
-      color: Colors.white,
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 32),
-            child: Text("Romdol.",
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00B686))),
-          ),
-          Expanded(
-            // التمرير في حال كانت الشاشة قصيرة
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  _sidebarItem(context, Icons.grid_view_rounded, "Dashboard",
-                      "/admin/dashboard", location == "/admin/dashboard"),
-                  _sidebarItem(context, Icons.shopping_cart_outlined, "Orders",
-                      "/admin/orders", location == "/admin/orders"),
-                  _sidebarItem(context, Icons.fastfood_outlined, "Products",
-                      "/admin/products", location == "/admin/products"),
-                  _sidebarItem(context, Icons.category_outlined, "Categories",
-                      "/admin/categories", location == "/admin/categories"),
-                  _sidebarItem(context, Icons.table_restaurant_outlined,
-                      "Tables", "/admin/tables", location == "/admin/tables"),
-                ],
-              ),
-            ),
-          ),
-          _sidebarItem(
-              context, Icons.logout_rounded, "Logout", "/admin/login", false,
-              isLogout: true),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _sidebarItem(BuildContext context, IconData icon, String label,
-      String route, bool isActive,
-      {bool isLogout = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        onTap: () async {
-          if (isLogout) {
-            final authProvider = context.read<AuthProvider>();
-            await authProvider.logout();
-            if (context.mounted) context.go(route);
-          } else {
-            context.go(route);
-          }
-        },
-        leading: Icon(icon,
-            color: isActive ? const Color(0xFF00B686) : Colors.grey[400],
-            size: 22),
-        title: Text(label,
-            style: TextStyle(
-                color: isActive ? Colors.black : Colors.grey[600],
-                fontSize: 14,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
-        tileColor: isActive
-            ? const Color(0xFF00B686).withOpacity(0.08)
-            : Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        dense: true, // تصغير حجم الـ ListTile قليلاً لمنع التكدس
       ),
     );
   }

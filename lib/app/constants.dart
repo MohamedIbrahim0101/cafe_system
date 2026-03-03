@@ -19,7 +19,7 @@ const BoxShadow kSoftShadow = BoxShadow(
   offset: Offset(0, 4),
 );
 
-const String kBaseUrl = 'https://your-app.web.app'; // Replace with your Firebase Hosting URL
+const String kBaseUrl = 'https://qalyoubfantasy.web.app';
 const String kCloudName = 'your-cloud-name'; // Replace with your Cloudinary cloud name
 const String kCloudinaryPreset = 'restaurant_upload'; // Create unsigned upload preset in Cloudinary dashboard
 
@@ -31,4 +31,7 @@ String imageUrlResize(String? url, {double width = 400, bool isThumb = false}) {
       : url;
 }
 
-String getQRData(int tableNumber) => '$kBaseUrl/#/menu?table=$tableNumber';
+String getQRData(int tableNumber) {
+  final int timestamp = DateTime.now().millisecondsSinceEpoch;
+  return '$kBaseUrl/#/menu?table=$tableNumber&v=$timestamp';
+}

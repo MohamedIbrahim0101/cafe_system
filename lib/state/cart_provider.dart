@@ -8,6 +8,7 @@ class CartItem {
   final String imageUrl;
   final double price;
   int quantity;
+  String notes; // 🔥 إضافة حقل الملحوظات
 
   CartItem({
     required this.productId,
@@ -15,6 +16,7 @@ class CartItem {
     required this.imageUrl,
     required this.price,
     this.quantity = 1,
+    this.notes = "", // قيمة افتراضية فارغة
   });
 
   double get total => price * quantity;
@@ -26,7 +28,9 @@ class CartProvider extends ChangeNotifier {
 
   List<CartItem> get items => _items;
   int get itemCount => _items.length;
+  
   int get totalItems => _items.fold(0, (sum, item) => sum + item.quantity);
+  
   double get totalPrice => _items.fold(0.0, (sum, item) => sum + item.total);
 
   set tableNumber(int? table) {
@@ -36,8 +40,11 @@ class CartProvider extends ChangeNotifier {
 
   int? get tableNumber => _tableNumber;
 
+  // --- العمليات على السلة ---
+
   void add(Product product) {
     final existingIndex = _items.indexWhere((item) => item.productId == product.id);
+    
     if (existingIndex >= 0) {
       _items[existingIndex].quantity++;
     } else {
@@ -49,6 +56,17 @@ class CartProvider extends ChangeNotifier {
       ));
     }
     notifyListeners();
+  }
+
+  // 🔥 الدالة السحرية لتحديث الملحوظات من الـ CartScreen
+  void updateItemNote(String productId, String newNote) {
+    final index = _items.indexWhere((item) => item.productId == productId);
+    if (index >= 0) {
+      _items[index].notes = newNote;
+      // لا نحتاج دائماً لـ notifyListeners هنا إذا كان الـ TextField 
+      // يتم التحكم به محلياً، لكن يفضل وضعها لضمان تحديث الـ UI
+      notifyListeners(); 
+    }
   }
 
   void updateQuantity(String productId, int qty) {
@@ -70,6 +88,7 @@ class CartProvider extends ChangeNotifier {
 
   void clear() {
     _items.clear();
+    _tableNumber = null; // اختياري: تصغير رقم الطاولة عند مسح السلة
     notifyListeners();
   }
 }

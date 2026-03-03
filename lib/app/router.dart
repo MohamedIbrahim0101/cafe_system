@@ -1,7 +1,7 @@
-// lib/app/router.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 // Screens
 import '../client/screens/splash_screen.dart';
@@ -26,66 +26,42 @@ class AppRouter {
     router = GoRouter(
       initialLocation: '/splash',
       routes: [
-        // --- 1. Splash Screen ---
-        GoRoute(
-          path: '/splash',
-          builder: (context, state) => const SplashScreen(),
-        ),
+        GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
 
-        // --- 2. Client: Menu Screen ---
+        // --- Client Routes ---
         GoRoute(
           path: '/menu',
           builder: (context, state) {
             final tableStr = state.uri.queryParameters['table'];
             final tableNumber = int.tryParse(tableStr ?? '');
-            
             if (tableNumber == null) {
-              return const Scaffold(
-                body: Center(child: Text('Please scan the QR code on your table')),
-              );
+              return const Scaffold(body: Center(child: Text('Scan Table QR Code', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))));
             }
             return MenuScreen(tableNumber: tableNumber);
           },
         ),
-
-        // --- 3. Client: Product Details ---
         GoRoute(
           path: '/product/:id',
           builder: (context, state) {
             final id = state.pathParameters['id']!;
-            final tableStr = state.uri.queryParameters['table'];
-            final tableNumber = int.tryParse(tableStr ?? '0');
+            final tableNumber = int.tryParse(state.uri.queryParameters['table'] ?? '0');
             return ProductDetailsScreen(productId: id, tableNumber: tableNumber!);
           },
         ),
-
-        // --- 4. Client: Cart Screen (المكان الذي حدث فيه الخطأ) ---
-        // سنقوم بتعريف المسار ليدعم الطريقتين لضمان عدم حدوث Crash
         GoRoute(
           path: '/cart',
           builder: (context, state) {
-            final tableStr = state.uri.queryParameters['table'];
-            final tableNumber = int.tryParse(tableStr ?? '0');
+            final tableNumber = int.tryParse(state.uri.queryParameters['table'] ?? '0');
             return CartScreen(tableNumber: tableNumber!);
           },
         ),
-
-        // --- 5. Client: Order Status ---
         GoRoute(
           path: '/order-status/:orderId',
-          builder: (context, state) {
-            final orderId = state.pathParameters['orderId']!;
-            return OrderStatusScreen(orderId: orderId);
-          },
+          builder: (context, state) => OrderStatusScreen(orderId: state.pathParameters['orderId']!),
         ),
 
-        // --- 6. Admin: Login Screen ---
-        GoRoute(
-          path: '/admin/login',
-          builder: (context, state) => const LoginScreen(),
-        ),
-
-        // --- 7. Admin: Dashboard & Sections (With Auth Guard) ---
+        // --- Admin Routes ---
+        GoRoute(path: '/admin/login', builder: (context, state) => const LoginScreen()),
         _adminRoute('/admin/dashboard', (state) => const DashboardScreen()),
         _adminRoute('/admin/orders', (state) => const OrdersScreen()),
         _adminRoute('/admin/products', (state) => const ProductsScreen()),
@@ -95,21 +71,19 @@ class AppRouter {
     );
   }
 
-  // دالة مساعدة لتقليل تكرار كود الحماية (Auth Guard) للـ Admin
   GoRoute _adminRoute(String path, Widget Function(GoRouterState state) builder) {
     return GoRoute(
       path: path,
       builder: (context, state) => builder(state),
       redirect: (context, state) {
         final auth = context.read<AuthProvider>();
-        if (auth.user == null) return '/admin/login';
-        return null;
+        return auth.user == null ? '/admin/login' : null;
       },
     );
   }
 }
 
-// --- Login Screen (تحسين التصميم ليكون Premium) ---
+// --- Login Screen (Admin Style - High Clarity) ---
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
 
@@ -120,79 +94,120 @@ class LoginScreen extends StatelessWidget {
     final passController = TextEditingController();
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8F9FA), // خلفية رمادية فاتحة جداً
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(kPadding * 2),
+          padding: const EdgeInsets.all(24.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // لوجو أو أيقونة الأدمن
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: kPrimaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.lock_person_rounded, size: 80, color: kPrimaryColor),
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                child: const Icon(Icons.admin_panel_settings_rounded, size: 80, color: Colors.black),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               Text(
-                'Admin Portal',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
+                "ADMIN LOGIN",
+                style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.black, letterSpacing: 1.5),
               ),
-              const SizedBox(height: 8),
-              Text('Please sign in to continue', style: TextStyle(color: Colors.grey[600])),
-              const SizedBox(height: 48),
+              const SizedBox(height: 40),
               
-              TextField(
-                controller: emailController,
-                decoration: InputDecoration(
-                  labelText: 'Email Address',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              // حاوية المدخلات (بيضاء صريحة)
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20)],
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.password_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 32),
-              
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2D2D2D), // لون نون الأسود
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                  onPressed: authProvider.loading
-                      ? null
-                      : () async {
-                          await authProvider.login(emailController.text, passController.text);
-                          if (authProvider.user != null) {
-                            if (context.mounted) context.go('/admin/dashboard');
-                          }
-                        },
-                  child: authProvider.loading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('SIGN IN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _inputLabel("EMAIL ADDRESS"),
+                    _buildTextField(emailController, Icons.email_outlined, false),
+                    const SizedBox(height: 20),
+                    _inputLabel("PASSWORD"),
+                    _buildTextField(passController, Icons.lock_outline, true),
+                    const SizedBox(height: 30),
+                    
+                    // زر تسجيل الدخول
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: authProvider.loading 
+                          ? null 
+                          : () async {
+                              if (emailController.text.isEmpty || passController.text.isEmpty) {
+                                _showStatus(context, "Please enter all fields", isError: true);
+                                return;
+                              }
+                              
+                              try {
+                                await authProvider.login(emailController.text, passController.text);
+                                if (authProvider.user != null) {
+                                  if (context.mounted) {
+                                    _showStatus(context, "Welcome Back!", isError: false);
+                                    context.go('/admin/dashboard');
+                                  }
+                                } else {
+                                  if (context.mounted) _showStatus(context, "Invalid Email or Password", isError: true);
+                                }
+                              } catch (e) {
+                                if (context.mounted) _showStatus(context, "Connection Error. Try again.", isError: true);
+                              }
+                            },
+                        child: authProvider.loading
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text("LOGIN TO DASHBOARD", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _inputLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 4),
+      child: Text(label, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 12)),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController controller, IconData icon, bool isPass) {
+    return TextField(
+      controller: controller,
+      obscureText: isPass,
+      style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold), // نص أسود عريض
+      decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: Colors.black, size: 20),
+        filled: true,
+        fillColor: const Color(0xFFF5F5F5),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        hintText: isPass ? "••••••••" : "admin@restaurant.com",
+        hintStyle: const TextStyle(color: Colors.black26, fontSize: 14),
+      ),
+    );
+  }
+
+  void _showStatus(BuildContext context, String msg, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: isError ? Colors.redAccent : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

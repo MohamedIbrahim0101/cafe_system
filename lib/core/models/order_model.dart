@@ -6,12 +6,14 @@ class OrderItem {
   final String name;
   final int quantity;
   final double price; // unit price
+  final String? notes; // 🔥 إضافة حقل الملحوظات ليتناسب مع السلة والـ Admin
 
   OrderItem({
     required this.productId,
     required this.name,
     required this.quantity,
     required this.price,
+    this.notes = "", // قيمة افتراضية فارغة
   });
 
   Map<String, dynamic> toMap() => {
@@ -19,13 +21,24 @@ class OrderItem {
         'name': name,
         'quantity': quantity,
         'price': price,
+        'notes': notes, // 🔥 حفظ الملحوظات في Firebase
       };
 
   factory OrderItem.fromMap(Map<String, dynamic> map) => OrderItem(
-        productId: map['productId'] ?? '',
-        name: map['name'] ?? '',
-        quantity: map['quantity'] ?? 0,
+        productId: map['productId']?.toString() ?? '',
+        name: map['name']?.toString() ?? 'Unknown',
+        quantity: (map['quantity'] as num?)?.toInt() ?? 0,
         price: (map['price'] as num?)?.toDouble() ?? 0.0,
+        notes: map['notes']?.toString() ?? '', // 🔥 قراءة الملحوظات من Firebase
+      );
+
+  // دالة لتسهيل زيادة الكمية في حال تكرار نفس الصنف مع الحفاظ على الملحوظات
+  OrderItem copyWith({int? quantity, String? notes}) => OrderItem(
+        productId: productId,
+        name: name,
+        quantity: quantity ?? this.quantity,
+        price: price,
+        notes: notes ?? this.notes,
       );
 }
 
@@ -34,7 +47,7 @@ class Order {
   final int tableNumber;
   final List<OrderItem> items;
   final double totalPrice;
-  final String status; // Pending, Preparing, Done
+  final String status; // Pending, Preparing, Done, Completed, Cancelled
   final DateTime createdAt;
 
   Order({
@@ -46,39 +59,59 @@ class Order {
     required this.createdAt,
   });
 
-  factory Order.fromSnapshot(DocumentSnapshot snapshot) {
-  final data = snapshot.data() as Map<String, dynamic>?;
-
-  if (data == null) {
-    throw Exception('Order document data is null');
+  // --- دالة copyWith ---
+  // مهمة جداً لتحديث حالة الطلب أو إضافة أصناف
+  Order copyWith({
+    String? id,
+    int? tableNumber,
+    List<OrderItem>? items,
+    double? totalPrice,
+    String? status,
+    DateTime? createdAt,
+  }) {
+    return Order(
+      id: id ?? this.id,
+      tableNumber: tableNumber ?? this.tableNumber,
+      items: items ?? this.items,
+      totalPrice: totalPrice ?? this.totalPrice,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+    );
   }
 
-  final List<dynamic> itemsData = data['items'] ?? [];
+  factory Order.fromSnapshot(DocumentSnapshot snapshot) {
+    final data = snapshot.data() as Map<String, dynamic>?;
 
-  final itemsList = itemsData
-      .map<OrderItem>(
-          (item) => OrderItem.fromMap(item as Map<String, dynamic>))
-      .toList();
+    if (data == null) {
+      throw Exception('Order document data is null');
+    }
 
-  return Order(
-    id: snapshot.id,
-    tableNumber: data['tableNumber'] ?? 0,
-    items: itemsList,
-    totalPrice: (data['totalPrice'] as num?)?.toDouble() ?? 0.0,
-    status: data['status'] ?? 'Pending',
+    List<OrderItem> itemsList = [];
+    if (data['items'] != null && data['items'] is List) {
+      for (var item in data['items']) {
+        if (item is Map<String, dynamic>) {
+          itemsList.add(OrderItem.fromMap(item));
+        } else {
+          print("⚠️ Warning: Invalid item format in order ${snapshot.id}");
+        }
+      }
+    }
 
-    // 🔥 الجزء المهم
-    createdAt: (data['createdAt'] as Timestamp?)
-            ?.toDate() ??
-        DateTime.now(),
-  );
-}
+    return Order(
+      id: snapshot.id,
+      tableNumber: int.tryParse(data['tableNumber']?.toString() ?? '0') ?? 0,
+      items: itemsList,
+      totalPrice: (data['totalPrice'] as num?)?.toDouble() ?? 0.0,
+      status: data['status']?.toString() ?? 'Pending',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
+  }
 
   Map<String, dynamic> toMap() => {
         'tableNumber': tableNumber,
         'items': items.map((item) => item.toMap()).toList(),
         'totalPrice': totalPrice,
         'status': status,
-        'createdAt': createdAt,
+        'createdAt': FieldValue.serverTimestamp(),
       };
 }
