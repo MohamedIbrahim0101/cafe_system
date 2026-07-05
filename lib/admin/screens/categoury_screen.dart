@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:premium_store/app/sidebar.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+
+// استدعاء المكونات والخدمات
 import '../../state/category_provider.dart';
-import '../../state/auth_brovider.dart';
 import '../../core/services/firebase_service.dart';
 import '../../core/services/cloudinary_service.dart';
 import '../../core/models/category_model.dart';
+// استدعاء السايد بار الموحد
 
 class CategoriesScreen extends StatefulWidget {
   const CategoriesScreen({super.key});
@@ -30,23 +33,17 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   @override
   Widget build(BuildContext context) {
     final categoryProvider = context.watch<CategoryProvider>();
-    final authProvider = context.watch<AuthProvider>();
-
-    // تحديد إذا كانت الشاشة موبايل (أصغر من 900 بكسل)
-    final bool isMobile = MediaQuery.of(context).size.width < 900;
+    final bool isMobile = MediaQuery.of(context).size.width < 1100;
 
     return Scaffold(
-      key: _scaffoldKey, // المفتاح لفتح الـ Drawer برمجياً
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFFF8F9FA),
-
-      // السايد بار يظهر كـ Drawer فقط في الموبايل
-      drawer:
-          isMobile ? Drawer(child: _buildSidebar(context, authProvider)) : null,
-
+      // الدرور يظهر فقط في الشاشات الصغيرة ويستخدم السايد بار الموحد
+      drawer: isMobile ? const Drawer(child: AdminSidebar()) : null,
       body: Row(
         children: [
-          // السايد بار يظهر ثابت فقط في شاشات الكمبيوتر
-          if (!isMobile) _buildSidebar(context, authProvider),
+          // السايد بار ثابت في الشاشات الكبيرة
+          if (!isMobile) const AdminSidebar(),
 
           Expanded(
             child: SafeArea(
@@ -76,19 +73,14 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  // الهيدر المحتوي على زر الـ Hamburger Menu للموبايل
+  // --- الهيدر (العنوان + زر الإضافة) ---
   Widget _buildHeader(BuildContext context, bool isMobile) {
     return Row(
       children: [
         if (isMobile)
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: IconButton(
-              // أيقونة المنيو (التي سألت عنها)
-              icon:
-                  const Icon(Icons.menu_rounded, size: 28, color: Colors.black),
-              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-            ),
+          IconButton(
+            icon: const Icon(Icons.menu_rounded, size: 28, color: Colors.black),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
           ),
         Expanded(
           child: Column(
@@ -125,17 +117,15 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
+  // --- شبكة التصنيفات (Responsive Grid) ---
   Widget _buildCategoryGrid(CategoryProvider provider, bool isMobile) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        int crossAxisCount = 2;
-        if (constraints.maxWidth > 1200) {
-          crossAxisCount = 5;
-        } else if (constraints.maxWidth > 850) {
-          crossAxisCount = 3;
-        } else if (constraints.maxWidth < 450) {
-          crossAxisCount = 1;
-        }
+        int crossAxisCount = constraints.maxWidth > 1200
+            ? 5
+            : (constraints.maxWidth > 850
+                ? 3
+                : (constraints.maxWidth < 450 ? 1 : 2));
 
         return GridView.builder(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -213,100 +203,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  // ميثود القائمة الجانبية (Sidebar)
-  Widget _buildSidebar(BuildContext context, AuthProvider authProvider) {
-    final String location = GoRouterState.of(context).uri.toString();
-
-    return Container(
-      width: 260,
-      height: double.infinity,
-      color: Colors.white,
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Text("Romdol.",
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00B686))),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.grid_view_rounded,
-                    "Dashboard",
-                    "/admin/dashboard",
-                    location.contains("dashboard")),
-                _sidebarItem(context, authProvider, Icons.shopping_bag_outlined,
-                    "Orders", "/admin/orders", location.contains("orders")),
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.fastfood_outlined,
-                    "Products",
-                    "/admin/products",
-                    location.contains("products")),
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.category_rounded,
-                    "Categories",
-                    "/admin/categories",
-                    location.contains("categories")),
-              ],
-            ),
-          ),
-          const Divider(indent: 20, endIndent: 20),
-          _sidebarItem(context, authProvider, Icons.logout_rounded, "Logout",
-              "/admin/login", false,
-              isLogout: true),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _sidebarItem(BuildContext context, AuthProvider authProvider,
-      IconData icon, String label, String route, bool isActive,
-      {bool isLogout = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        onTap: () async {
-          if (isLogout) {
-            await authProvider.logout();
-            if (mounted) context.go(route);
-          } else {
-            // إغلاق المنيو في الموبايل عند اختيار صفحة
-            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-              Navigator.pop(context);
-            }
-            context.go(route);
-          }
-        },
-        leading: Icon(icon,
-            color: isActive ? const Color(0xFF00B686) : Colors.grey[400],
-            size: 22),
-        title: Text(label,
-            style: TextStyle(
-                color: isActive ? const Color(0xFF00B686) : Colors.grey[700],
-                fontSize: 15,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.w500)),
-        tileColor: isActive
-            ? const Color(0xFF00B686).withOpacity(0.08)
-            : Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        dense: true,
-      ),
-    );
-  }
-
-  // --- دوال العمليات (Dialog & Delete) ---
-
+  // --- ديالوج الإضافة والتعديل ---
   void _showCategoryDialog(BuildContext context, CategoryModel? category) {
     final bool isEdit = category != null;
     _nameController.text = isEdit ? category.name : "";
@@ -351,7 +248,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                         border: Border.all(color: Colors.grey[300]!),
                       ),
                       child: _isUploading
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                  color: Color(0xFF00B686)))
                           : _uploadedImageUrl != null
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(50),
@@ -366,7 +265,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     controller: _nameController,
                     decoration: const InputDecoration(
                         labelText: "Category Name",
-                        border: OutlineInputBorder()),
+                        border: OutlineInputBorder(),
+                        focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: Color(0xFF00B686)))),
                   ),
                 ],
               ),
@@ -375,7 +276,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text("Cancel")),
+                child:
+                    const Text("Cancel", style: TextStyle(color: Colors.grey))),
             ElevatedButton(
               onPressed: _isUploading
                   ? null
@@ -408,12 +310,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
+  // --- تأكيد الحذف ---
   void _confirmDelete(CategoryModel category) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Delete Category"),
-        content: Text("Delete '${category.name}'?"),
+        content: Text("Are you sure you want to delete '${category.name}'?"),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),

@@ -1,11 +1,11 @@
 {
-    "name": "qalyoub_fantasy",
-    "short_name": "qalyoub_fantasy",
+    "name": "Restaurant Management System",
+    "short_name": "RestoPOS",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Professional Restaurant Management and POS System.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

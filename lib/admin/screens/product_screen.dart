@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:premium_store/app/sidebar.dart';
+import 'package:premium_store/state/product_brovider.dart';
 import 'package:provider/provider.dart';
-import 'package:go_router/go_router.dart';
-import '../../state/auth_brovider.dart';
-import '../../state/product_brovider.dart';
+
+// Models & Services
 import '../../core/models/product_model.dart';
 import '../../core/services/firebase_service.dart';
 import 'add_product_screen.dart';
@@ -16,27 +17,20 @@ class ProductsScreen extends StatefulWidget {
 
 class _ProductsScreenState extends State<ProductsScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  final Color brandGreen = const Color(0xFF00B686);
+  final Color primaryGreen = const Color(0xFF00B686);
 
   @override
   Widget build(BuildContext context) {
     final productProvider = context.watch<ProductProvider>();
-    final authProvider = context.watch<AuthProvider>();
-
-    // فحص حجم الشاشة
     final bool isMobile = MediaQuery.of(context).size.width < 900;
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: const Color(0xFFF8F9FA),
-      // الدرور للموبايل فقط
-      drawer:
-          isMobile ? Drawer(child: _buildSidebar(context, authProvider)) : null,
+      drawer: isMobile ? const Drawer(child: AdminSidebar()) : null,
       body: Row(
         children: [
-          // السايد بار الثابت للكمبيوتر فقط
-          if (!isMobile) _buildSidebar(context, authProvider),
-
+          if (!isMobile) const AdminSidebar(),
           Expanded(
             child: SafeArea(
               child: Padding(
@@ -49,8 +43,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     Expanded(
                       child: productProvider.isLoading
                           ? Center(
-                              child:
-                                  CircularProgressIndicator(color: brandGreen))
+                              child: CircularProgressIndicator(
+                                  color: primaryGreen))
                           : productProvider.products.isEmpty
                               ? _buildEmptyState()
                               : _buildProductGrid(productProvider.products),
@@ -95,7 +89,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
               style: const TextStyle(
                   color: Colors.white, fontWeight: FontWeight.bold)),
           style: ElevatedButton.styleFrom(
-            backgroundColor: brandGreen,
+            backgroundColor: primaryGreen,
             padding: EdgeInsets.symmetric(
                 horizontal: isMobile ? 12 : 20, vertical: 15),
             shape:
@@ -111,13 +105,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         double width = constraints.maxWidth;
-        int crossAxisCount = (width / 220).floor(); // حساب تلقائي لعدد الأعمدة
+        int crossAxisCount = (width / 220).floor();
         if (crossAxisCount < 2) crossAxisCount = 2;
 
         return GridView.builder(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            childAspectRatio: 0.75,
+            childAspectRatio: 0.65, // زيادة الطول لاحتواء السويتش
             crossAxisSpacing: 20,
             mainAxisSpacing: 20,
           ),
@@ -129,6 +123,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 
   Widget _buildProductCard(Product product) {
+    // الحصول على السعر (أصغر سعر في حال وجود أحجام)
+   String displayPrice = product.price.toStringAsFixed(2);
+    
+    // التعديل هنا: استخدام values للوصول للأرقام مباشرة
+    if (product.hasSizes && product.sizes.isNotEmpty) {
+      double minPrice = product.sizes.values.reduce((a, b) => a < b ? a : b);
+      displayPrice = minPrice.toStringAsFixed(2);
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -178,12 +181,25 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 4),
-                Text("\$${product.price.toStringAsFixed(2)}",
+                Text("\$$displayPrice",
                     style: TextStyle(
-                        color: brandGreen,
+                        color: primaryGreen,
                         fontWeight: FontWeight.w800,
                         fontSize: 16)),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text("Available", style: TextStyle(fontSize: 12)),
+                    Switch(
+                      value: product.isAvailable,
+                      activeColor: primaryGreen,
+                      onChanged: (val) async {
+                        await FirebaseService.products.doc(product.id).update({'isAvailable': val});
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Product Updated Successfully")));
+                      },
+                    ),
+                  ],
+                ),
                 Row(
                   children: [
                     Expanded(
@@ -227,7 +243,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isAvailable ? brandGreen : Colors.redAccent,
+        color: isAvailable ? primaryGreen : Colors.redAccent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(isAvailable ? "Available" : "Sold Out",
@@ -236,116 +252,34 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
-  Widget _buildSidebar(BuildContext context, AuthProvider authProvider) {
-    final String location = GoRouterState.of(context).uri.toString();
-    return Container(
-      width: 260,
-      height: double.infinity,
-      color: Colors.white,
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Text("Romdol.",
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00B686))),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.grid_view_rounded,
-                    "Dashboard",
-                    "/admin/dashboard",
-                    location.contains("dashboard")),
-                _sidebarItem(context, authProvider, Icons.shopping_bag_outlined,
-                    "Orders", "/admin/orders", location.contains("orders")),
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.fastfood_outlined,
-                    "Products",
-                    "/admin/products",
-                    location.contains("products")),
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.category_rounded,
-                    "Categories",
-                    "/admin/categories",
-                    location.contains("categories")),
-                _sidebarItem(context, authProvider, Icons.table_bar_outlined,
-                    "Tables", "/admin/tables", location.contains("tables")),
-              ],
-            ),
-          ),
-          const Divider(indent: 20, endIndent: 20),
-          _sidebarItem(context, authProvider, Icons.logout_rounded, "Logout",
-              "/admin/login", false,
-              isLogout: true),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _sidebarItem(BuildContext context, AuthProvider authProvider,
-      IconData icon, String label, String route, bool isActive,
-      {bool isLogout = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        onTap: () async {
-          if (isLogout) {
-            await authProvider.logout();
-            if (mounted) context.go(route);
-          } else {
-            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-              Navigator.pop(context);
-            }
-            context.go(route);
-          }
-        },
-        leading: Icon(icon,
-            color: isActive ? brandGreen : Colors.grey[400], size: 22),
-        title: Text(label,
-            style: TextStyle(
-                color: isActive ? brandGreen : Colors.grey[700],
-                fontSize: 15,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.w500)),
-        tileColor: isActive ? brandGreen.withOpacity(0.08) : Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        dense: true,
-      ),
-    );
-  }
-
   void _navigateToEdit(BuildContext context, Product? product) {
     Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (context) => AddProductScreen(product: product)));
+      context,
+      MaterialPageRoute(
+          builder: (context) => AddProductScreen(product: product)),
+    ).then((_) {
+       // إضافة تنبيه عند العودة من شاشة التعديل
+       if (product != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Product Updated Successfully")));
+       }
+    });
   }
 
   void _confirmDelete(BuildContext context, Product product) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Delete Product"),
         content: Text("Are you sure you want to delete '${product.name}'?"),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () async {
               await FirebaseService.products.doc(product.id).delete();
-              if (mounted) Navigator.pop(context);
+              if (mounted) Navigator.pop(dialogContext);
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,

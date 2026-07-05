@@ -3,16 +3,20 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../state/product_brovider.dart';
+import '../../state/product_brovider.dart'; // تأكد من اسم الملف عندك
 import '../../state/cart_provider.dart';
 import '../../app/constants.dart';
+import '../../core/models/product_model.dart'; // ضفنا الـ import للمودل عشان ننسخ منه
 
 class ProductDetailsScreen extends StatefulWidget {
   final String productId;
   final int tableNumber;
 
-  const ProductDetailsScreen(
-      {super.key, required this.productId, required this.tableNumber});
+  const ProductDetailsScreen({
+    super.key,
+    required this.productId,
+    required this.tableNumber,
+  });
 
   @override
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
@@ -20,6 +24,7 @@ class ProductDetailsScreen extends StatefulWidget {
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   int qty = 1;
+  String? selectedSize; // متغير عشان نحفظ فيه الحجم اللي الزبون اختاره
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +36,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           (p) => p.id == widget.productId,
           orElse: () => throw Exception('Product not found'),
         );
-        final cartProvider = Provider.of<CartProvider>(context);
+        final cartProvider = Provider.of<CartProvider>(context, listen: false);
+
+        // لو المنتج ليه أحجام ولسه الزبون مختارش، نختار أول حجم كافتراضي
+        if (product.hasSizes && product.sizes.isNotEmpty && selectedSize == null) {
+          selectedSize = product.sizes.keys.first;
+        }
+
+        // تحديد السعر اللي هيتعرض (لو ليه أحجام نعرض سعر الحجم المختار، لو لأ نعرض السعر الأساسي)
+        final displayPrice = (product.hasSizes && selectedSize != null)
+            ? product.sizes[selectedSize]!
+            : product.price;
 
         return Scaffold(
           backgroundColor: Colors.white,
@@ -39,17 +54,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             backgroundColor: Colors.white,
             elevation: 0,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new,
-                  color: Colors.black, size: 20),
+              icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
               onPressed: () => context.pop(),
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.share_outlined,
-                    color: Colors.black, size: 20),
-                onPressed: () {},
-              ),
-            ],
+           
           ),
           body: Column(
             children: [
@@ -66,8 +74,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       ),
                       child: Hero(
                         tag: product.id,
-                        child: Image.network(product.imageUrl,
-                            fit: BoxFit.contain),
+                        child: Image.network(product.imageUrl, fit: BoxFit.contain),
                       ),
                     ),
 
@@ -77,7 +84,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // --- Brand / Category Tag ---
-                          Text(
+                          const Text(
                             "FRESH SELECTION",
                             style: TextStyle(
                               color: primaryColor,
@@ -102,12 +109,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.baseline,
                             textBaseline: TextBaseline.alphabetic,
                             children: [
-                              const Text("USD ",
+                              const Text("EGP ",
                                   style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500)),
+                                      fontSize: 14, fontWeight: FontWeight.w500)),
                               Text(
-                                product.price.toStringAsFixed(2),
+                                displayPrice.toStringAsFixed(2),
                                 style: const TextStyle(
                                     fontSize: 28, fontWeight: FontWeight.w900),
                               ),
@@ -119,7 +125,44 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                               ),
                             ],
                           ),
-                          const Divider(height: 40),
+                          const Divider(height: 30),
+
+                          // --- Sizes Selection (يظهر فقط لو المنتج ليه أحجام) ---
+                          if (product.hasSizes && product.sizes.isNotEmpty) ...[
+                            const Text(
+                              "Select Size",
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 12,
+                              children: product.sizes.keys.map((sizeName) {
+                                final isSelected = selectedSize == sizeName;
+                                return ChoiceChip(
+                                  label: Text(
+                                    sizeName.toUpperCase(),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected ? Colors.white : Colors.black87,
+                                    ),
+                                  ),
+                                  selected: isSelected,
+                                  selectedColor: primaryColor,
+                                  backgroundColor: Colors.grey.shade100,
+                                  onSelected: (selected) {
+                                    if (selected) {
+                                      setState(() {
+                                        selectedSize = sizeName;
+                                      });
+                                    }
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                            const Divider(height: 30),
+                          ],
+
                           // --- Description ---
                           const Text("Overview",
                               style: TextStyle(
@@ -142,8 +185,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
               // --- Bottom Action Bar (Noon Style) ---
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   boxShadow: [
@@ -166,8 +208,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         child: Row(
                           children: [
                             IconButton(
-                              onPressed:
-                                  qty > 1 ? () => setState(() => qty--) : null,
+                              onPressed: qty > 1 ? () => setState(() => qty--) : null,
                               icon: const Icon(Icons.remove, size: 18),
                             ),
                             Text('$qty',
@@ -193,14 +234,34 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                               elevation: 0,
                             ),
                             onPressed: () {
-                              for (int i = 0; i < qty; i++) {
-                                cartProvider.add(product);
+                              // الحركة الذكية: نجهز منتج جديد بمعلومات الحجم عشان السلة
+                              Product productToCart = product;
+                              
+                              if (product.hasSizes && selectedSize != null) {
+                                productToCart = Product(
+                                  id: '${product.id}_$selectedSize', // بنميز الـ ID عشان ميتلخبطش في السلة
+                                  name: '${product.name} ($selectedSize)', // بنكتب الحجم جنب الاسم
+                                  description: product.description,
+                                  price: displayPrice, // السعر المخصص للحجم
+                                  imageUrl: product.imageUrl,
+                                  categoryId: product.categoryId,
+                                  isAvailable: product.isAvailable,
+                                  createdAt: product.createdAt,
+                                  // مبنبعتش الأحجام للسلة عشان هي مش محتاجاها خلاص
+                                  hasSizes: false, 
+                                );
                               }
+
+                              // الإضافة للسلة
+                              for (int i = 0; i < qty; i++) {
+                                cartProvider.add(productToCart);
+                              }
+                              
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   backgroundColor: primaryColor,
                                   content: Text(
-                                      'Added $qty ${product.name} to your basket'),
+                                      'Added $qty ${productToCart.name} to your basket'),
                                   behavior: SnackBarBehavior.floating,
                                 ),
                               );

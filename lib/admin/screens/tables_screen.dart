@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:premium_store/state/auth_brovider.dart';
+import 'package:premium_store/app/sidebar.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:go_router/go_router.dart';
 import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+
+// Models & Services
 import '../../core/models/table_model.dart';
 import '../../core/services/firebase_service.dart';
 import '../../core/services/qr_services.dart';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 
 class TablesScreen extends StatefulWidget {
   const TablesScreen({super.key});
@@ -23,8 +23,9 @@ class TablesScreen extends StatefulWidget {
 }
 
 class _TablesScreenState extends State<TablesScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final tableController = TextEditingController();
-  final Color brandGreen = const Color(0xFF00B686);
+  final Color primaryGreen = const Color(0xFF00B686);
 
   @override
   void dispose() {
@@ -69,7 +70,9 @@ class _TablesScreenState extends State<TablesScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: const Text("Delete Table?"),
-        content: Text("Are you sure you want to delete Table $tableNum?"),
+        content: Text(tableNum == 0
+            ? "Are you sure you want to delete Takeaway QR?"
+            : "Are you sure you want to delete Table $tableNum?"),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -90,114 +93,117 @@ class _TablesScreenState extends State<TablesScreen> {
 
   // --- ديالوج إضافة طاولة ---
   void _showAddDialog() {
+    bool isTakeaway = false;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Add New Table',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: tableController,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: 'Table Number',
-            hintText: 'e.g. 5',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            prefixIcon: const Icon(Icons.table_bar),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Add New QR Point',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isTakeaway)
+                TextField(
+                  controller: tableController,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Table Number',
+                    hintText: 'e.g. 5',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.table_bar),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text("Is this for Takeaway?"),
+                value: isTakeaway,
+                onChanged: (v) => setDialogState(() => isTakeaway = v!),
+              ),
+            ],
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                final num = isTakeaway ? 0 : int.tryParse(tableController.text);
+                if (num != null || isTakeaway) {
+                  final qrData = QRService.generateQRData(num ?? 0);
+                  await FirebaseService.tables.add({
+                    'tableNumber': num ?? 0,
+                    'qrUrl': qrData,
+                    'createdAt': FieldValue.serverTimestamp(),
+                  });
+                  tableController.clear();
+                  if (mounted) Navigator.pop(ctx);
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
+              child:
+                  const Text('Create', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              final num = int.tryParse(tableController.text);
-              if (num != null) {
-                final qrData = QRService.generateQRData(num);
-                await FirebaseService.tables.add({
-                  'tableNumber': num,
-                  'qrUrl': qrData,
-                  'createdAt': FieldValue.serverTimestamp(),
-                });
-                tableController.clear();
-                if (mounted) Navigator.pop(ctx);
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: brandGreen),
-            child: const Text('Create', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final screenWidth = MediaQuery.of(context).size.width;
-    final bool isMobile = screenWidth < 900;
+    final bool isMobile = MediaQuery.of(context).size.width < 900;
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFFF8F9FA),
-      // Drawer للموبايل
-      drawer:
-          isMobile ? Drawer(child: _buildSidebar(context, authProvider)) : null,
-      appBar: isMobile
-          ? AppBar(
-              backgroundColor: Colors.white,
-              elevation: 0,
-              centerTitle: true,
-              iconTheme: const IconThemeData(color: Colors.black),
-              title: const Text("Tables Management",
-                  style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold)),
-            )
-          : null,
+      drawer: isMobile ? const Drawer(child: AdminSidebar()) : null,
       body: Row(
         children: [
-          if (!isMobile) _buildSidebar(context, authProvider),
+          if (!isMobile) const AdminSidebar(),
           Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                  horizontal: isMobile ? 16.0 : 32.0,
-                  vertical: isMobile ? 16.0 : 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(isMobile),
-                  const SizedBox(height: 32),
-                  Expanded(
-                    child: StreamBuilder<List<TableModel>>(
-                      stream: FirebaseService.getTablesStream(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return Center(
-                              child:
-                                  CircularProgressIndicator(color: brandGreen));
-                        }
-                        final tables = snapshot.data ?? [];
-                        if (tables.isEmpty) return _buildEmptyState();
+            child: SafeArea(
+              child: Padding(
+                padding: EdgeInsets.all(isMobile ? 16.0 : 30.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(isMobile),
+                    const SizedBox(height: 25),
+                    Expanded(
+                      child: StreamBuilder<List<TableModel>>(
+                        stream: FirebaseService.getTablesStream(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return Center(
+                                child: CircularProgressIndicator(
+                                    color: primaryGreen));
+                          }
+                          final tables = snapshot.data ?? [];
+                          if (tables.isEmpty) return _buildEmptyState();
 
-                        return GridView.builder(
-                          // توزيع تلقائي بناءً على العرض
-                          gridDelegate:
-                              const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 280,
-                            childAspectRatio: 0.72,
-                            crossAxisSpacing: 24,
-                            mainAxisSpacing: 24,
-                          ),
-                          itemCount: tables.length,
-                          itemBuilder: (ctx, i) => _buildTableCard(tables[i]),
-                        );
-                      },
+                          return GridView.builder(
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 280,
+                              childAspectRatio: 0.72,
+                              crossAxisSpacing: 20,
+                              mainAxisSpacing: 20,
+                            ),
+                            itemCount: tables.length,
+                            itemBuilder: (ctx, i) => _buildTableCard(tables[i]),
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -207,89 +213,93 @@ class _TablesScreenState extends State<TablesScreen> {
   }
 
   Widget _buildHeader(bool isMobile) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        bool wrapMode = constraints.maxWidth < 600;
-        return Flex(
-          direction: wrapMode ? Axis.vertical : Axis.horizontal,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment:
-              wrapMode ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Tables & QR Codes",
-                    style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1C1E))),
-                const SizedBox(height: 4),
-                Text("Generate and manage QR codes for your tables",
-                    style:
-                        TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-              ],
-            ),
-            if (wrapMode) const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _showAddDialog,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text("Add New Table"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: brandGreen,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
-            ),
-          ],
-        );
-      },
+    return Row(
+      children: [
+        if (isMobile)
+          IconButton(
+            icon: const Icon(Icons.menu_rounded, size: 28),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          ),
+        if (isMobile) const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Tables Management",
+                  style: TextStyle(
+                      fontSize: isMobile ? 20 : 28,
+                      fontWeight: FontWeight.w900)),
+              if (!isMobile)
+                Text("Generate and manage QR codes for your tables & Takeaway",
+                    style: TextStyle(color: Colors.grey.shade600)),
+            ],
+          ),
+        ),
+        ElevatedButton.icon(
+          onPressed: _showAddDialog,
+          icon: const Icon(Icons.add_rounded, size: 20, color: Colors.white),
+          label: Text(isMobile ? "Add" : "Add New",
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryGreen,
+            padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 12 : 20, vertical: 15),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildTableCard(TableModel table) {
     final qrKey = GlobalKey();
+    bool isTakeaway = table.tableNumber == 0;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 15,
-              offset: const Offset(0, 6))
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4))
         ],
       ),
       child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.all(15.0),
             child: Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.table_bar_outlined, size: 18, color: brandGreen),
+                    Icon(
+                        isTakeaway
+                            ? Icons.shopping_bag_outlined
+                            : Icons.table_bar_outlined,
+                        size: 18,
+                        color: primaryGreen),
                     const SizedBox(width: 8),
-                    Text('Table ${table.tableNumber}',
+                    Text(isTakeaway ? 'Takeaway' : 'Table ${table.tableNumber}',
                         style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 18)),
+                            fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 12),
                 Expanded(
                   child: RepaintBoundary(
                     key: qrKey,
                     child: Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         border: Border.all(color: Colors.grey.shade100),
-                        borderRadius: BorderRadius.circular(15),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: QrImageView(
                         data: table.qrUrl,
@@ -303,22 +313,23 @@ class _TablesScreenState extends State<TablesScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
-                  height: 42,
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                        _downloadQR(qrKey, 'Table_${table.tableNumber}.png'),
-                    icon: const Icon(Icons.file_download_outlined, size: 18),
-                    label: const Text("Download PNG",
+                  child: TextButton.icon(
+                    onPressed: () => _downloadQR(qrKey,
+                        'Table_${table.tableNumber == 0 ? "Takeaway" : table.tableNumber}.png'),
+                    icon: const Icon(Icons.file_download_outlined,
+                        size: 18, color: Colors.blue),
+                    label: const Text("Download",
                         style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: brandGreen,
-                      side: BorderSide(color: brandGreen.withOpacity(0.5)),
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.blue.withOpacity(0.05),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ),
@@ -326,12 +337,11 @@ class _TablesScreenState extends State<TablesScreen> {
             ),
           ),
           Positioned(
-            top: 8,
-            right: 8,
+            top: 5,
+            right: 5,
             child: IconButton(
-              tooltip: "Delete Table",
               icon: Icon(Icons.cancel_rounded,
-                  color: Colors.red.shade200, size: 22),
+                  color: Colors.red.withOpacity(0.3), size: 20),
               onPressed: () => _deleteTable(table.id, table.tableNumber),
             ),
           ),
@@ -347,86 +357,9 @@ class _TablesScreenState extends State<TablesScreen> {
         children: [
           Icon(Icons.qr_code_2_rounded, size: 80, color: Colors.grey[200]),
           const SizedBox(height: 16),
-          const Text("No tables added yet",
+          const Text("No tables or Takeaway points added yet",
               style: TextStyle(color: Colors.grey, fontSize: 16)),
         ],
-      ),
-    );
-  }
-
-  // --- Sidebar المتناسق مع بقية التطبيق ---
-  Widget _buildSidebar(BuildContext context, AuthProvider auth) {
-    final String location = GoRouterState.of(context).uri.toString();
-    return Container(
-      width: 260,
-      color: Colors.white,
-      child: Column(
-        children: [
-          const SizedBox(height: 40),
-          Text("Romdol.",
-              style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: brandGreen)),
-          const SizedBox(height: 40),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  _sidebarItem(
-                      context,
-                      auth,
-                      Icons.grid_view_rounded,
-                      "Dashboard",
-                      "/admin/dashboard",
-                      location.contains("dashboard")),
-                  _sidebarItem(context, auth, Icons.shopping_bag_outlined,
-                      "Orders", "/admin/orders", location.contains("orders")),
-                  _sidebarItem(
-                      context,
-                      auth,
-                      Icons.fastfood_outlined,
-                      "Products",
-                      "/admin/products",
-                      location.contains("products")),
-                  _sidebarItem(context, auth, Icons.table_bar_outlined,
-                      "Tables", "/admin/tables", location.contains("tables")),
-                ],
-              ),
-            ),
-          ),
-          _sidebarItem(context, auth, Icons.logout_rounded, "Logout",
-              "/admin/login", false,
-              isLogout: true),
-          const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
-
-  Widget _sidebarItem(BuildContext context, AuthProvider auth, IconData icon,
-      String label, String route, bool isActive,
-      {bool isLogout = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        onTap: () async {
-          if (isLogout) {
-            await auth.logout();
-            if (mounted) context.go(route);
-          } else {
-            context.go(route);
-          }
-        },
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tileColor: isActive ? brandGreen.withOpacity(0.08) : Colors.transparent,
-        leading: Icon(icon,
-            color: isActive ? brandGreen : Colors.grey[400], size: 22),
-        title: Text(label,
-            style: TextStyle(
-                color: isActive ? brandGreen : Colors.grey[700],
-                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                fontSize: 15)),
       ),
     );
   }

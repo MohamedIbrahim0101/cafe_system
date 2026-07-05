@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:premium_store/app/sidebar.dart';
 import 'package:provider/provider.dart';
-import 'package:go_router/go_router.dart';
 import 'dart:ui';
-import '../../state/auth_brovider.dart';
+import 'package:printing/printing.dart'; // للطباعة
+import 'package:pdf/pdf.dart'; // لتصميم الفاتورة
+import 'package:pdf/widgets.dart' as pw;
+
 import '../../state/order_provider.dart';
 import '../../core/services/firebase_service.dart';
 import '../../core/models/order_model.dart';
@@ -16,42 +19,72 @@ class OrdersScreen extends StatefulWidget {
 
 class _OrdersScreenState extends State<OrdersScreen> {
   String selectedFilter = 'All';
-  final List<String> statusOptions = [
+  final List<String> statusOptions = const [
     'Pending',
     'Preparing',
     'Done',
     'Cancelled',
     'Delivered'
   ];
-
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final Color brandGreen = const Color(0xFF00B686);
 
+  // --- دالة طباعة الفاتورة ---
+  Future<void> _printReceipt(Order order) async {
+    final doc = pw.Document();
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.roll80, // مقاس طابعة الكاشير الحرارية
+        build: (pw.Context context) {
+          return pw.Column(
+            children: [
+              pw.Text("REStAURANT",
+                  style: pw.TextStyle(
+                      fontSize: 20, fontWeight: pw.FontWeight.bold)),
+              pw.Divider(),
+              pw.Text(
+                  "Order #${order.dailySequenceNumber}"), // الرقم المسلسل الجديد
+              pw.ListView(
+                  children: order.items
+                      .map((item) => pw.Row(
+                            mainAxisAlignment:
+                                pw.MainAxisAlignment.spaceBetween,
+                            children: [
+                              pw.Text("${item.quantity}x ${item.name}"),
+                              pw.Text("\$${item.price}")
+                            ],
+                          ))
+                      .toList()),
+              pw.Divider(),
+              pw.Text("Total: \$${order.totalPrice.toStringAsFixed(2)}",
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            ],
+          );
+        },
+      ),
+    );
+    await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => doc.save());
+  }
+
   @override
   Widget build(BuildContext context) {
-    final orderProvider = context.watch<OrderProvider>();
-    final authProvider = context.watch<AuthProvider>();
+    final orders = context.select<OrderProvider, List<Order>>((p) => p.orders);
+    final isLoading = context.select<OrderProvider, bool>((p) => p.isLoading);
+    final bool isMobile = MediaQuery.of(context).size.width < 1100;
 
-    // فحص حجم الشاشة
-    final bool isMobile = MediaQuery.of(context).size.width < 900;
-
+    // فلترة الطلبات
     final filteredOrders = selectedFilter == 'All'
-        ? orderProvider.orders
-        : orderProvider.orders
-            .where((o) => o.status == selectedFilter)
-            .toList();
+        ? orders
+        : orders.where((o) => o.status == selectedFilter).toList();
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: const Color(0xFFF8F9FA),
-      // الدرور للموبايل فقط
-      drawer:
-          isMobile ? Drawer(child: _buildSidebar(context, authProvider)) : null,
+      drawer: isMobile ? const AdminSidebar() : null,
       body: Row(
         children: [
-          // السايد بار الثابت للكمبيوتر فقط
-          if (!isMobile) _buildSidebar(context, authProvider),
-
+          if (!isMobile) const AdminSidebar(),
           Expanded(
             child: SafeArea(
               child: Padding(
@@ -65,25 +98,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     const SizedBox(height: 25),
                     Expanded(
                       child: Container(
-                        width: double.infinity,
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.02),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            )
-                          ],
-                        ),
-                        child: orderProvider.isLoading
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15)),
+                        child: isLoading
                             ? Center(
                                 child: CircularProgressIndicator(
                                     color: brandGreen))
                             : filteredOrders.isEmpty
                                 ? const Center(child: Text("No orders found."))
-                                : _buildResponsiveTable(filteredOrders),
+                                : _buildOptimizedTable(
+                                    filteredOrders, isMobile),
                       ),
                     ),
                   ],
@@ -96,12 +121,43 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
+  // --- تم تعديل الـ Row ليظهر الـ Sequence Number ---
+  Widget _buildOrderRow(Order order) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        children: [
+          Expanded(
+              flex: 2,
+              child: Text("#${order.dailySequenceNumber}",
+                  style: const TextStyle(fontWeight: FontWeight.bold))),
+          Expanded(flex: 2, child: Text("T-${order.tableNumber}")),
+          Expanded(flex: 2, child: Text("${order.items.length} Items")),
+          Expanded(
+              flex: 2, child: Text("\$${order.totalPrice.toStringAsFixed(2)}")),
+          Expanded(
+              flex: 3, child: _buildStatusDropdown(order.status, order.id)),
+          Expanded(
+              flex: 1,
+              child: IconButton(
+                  icon: const Icon(Icons.print, size: 20),
+                  onPressed: () => _printReceipt(order))),
+          Expanded(
+              flex: 1,
+              child: IconButton(
+                  icon: const Icon(Icons.visibility),
+                  onPressed: () => _showGlassDetails(context, order))),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHeader(bool isMobile) {
     return Row(
       children: [
         if (isMobile)
           IconButton(
-            icon: const Icon(Icons.menu_rounded, size: 28),
+            icon: const Icon(Icons.menu_rounded, size: 28, color: Colors.black),
             onPressed: () => _scaffoldKey.currentState?.openDrawer(),
           ),
         if (isMobile) const SizedBox(width: 8),
@@ -110,115 +166,118 @@ class _OrdersScreenState extends State<OrdersScreen> {
           children: [
             Text("Orders Control",
                 style: TextStyle(
-                    fontSize: isMobile ? 22 : 28, fontWeight: FontWeight.w900)),
+                    fontSize: isMobile ? 22 : 28,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black)),
             if (!isMobile)
-              Text("Track and manage your restaurant flow",
-                  style: TextStyle(color: Colors.grey.shade600)),
+              const Text("Track and manage your restaurant flow",
+                  style: TextStyle(color: Colors.black)),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildResponsiveTable(List<Order> orders) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                child: DataTable(
-                  // لون خلفية الهيدر فاتح عشان يبرز النص الأسود فوقه
-                  headingRowColor:
-                      MaterialStateProperty.all(const Color(0xFFF1F3F5)),
-                  dataRowHeight: 75,
-                  headingRowHeight: 55,
-                  horizontalMargin: 20,
-                  columnSpacing: 40,
-
-                  // --- هذا هو التعديل المطلوب لبروز العناوين ---
-                  headingTextStyle: const TextStyle(
-                    color: Colors.black, // لون أسود صريح
-                    fontWeight: FontWeight.w900, // أقصى درجات العرض (Bold)
-                    fontSize: 14, // مقاس الخط
-                    letterSpacing: 1.1, // مسافة بسيطة بين الحروف لزيادة الوضوح
-                  ),
-                  // -------------------------------------------
-
-                  columns: const [
-                    DataColumn(label: Text('ID')),
-                    DataColumn(label: Text('TABLE')),
-                    DataColumn(label: Text('ITEMS')),
-                    DataColumn(label: Text('TOTAL')),
-                    DataColumn(label: Text('STATUS')),
-                    DataColumn(label: Text('TIME')),
-                    DataColumn(label: Text('ACTION')),
-                  ],
-                  rows: orders.map((order) => _buildOrderRow(order)).toList(),
-                ),
-              ),
-            ),
+  // استخدام نظام الـ List المحسن بدلاً من DataTable لمنع الـ Lag تماماً
+  Widget _buildOptimizedTable(List<Order> orders, bool isMobile) {
+    return Column(
+      children: [
+        // Header ثابت للجدول
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF1F3F5),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
           ),
-        );
-      },
+          child: const Row(
+            children: [
+              Expanded(
+                  flex: 2,
+                  child: Text('ID',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 13))),
+              Expanded(
+                  flex: 2,
+                  child: Text('TABLE',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 13))),
+              Expanded(
+                  flex: 2,
+                  child: Text('ITEMS',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 13))),
+              Expanded(
+                  flex: 2,
+                  child: Text('TOTAL',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 13))),
+              Expanded(
+                  flex: 3,
+                  child: Text('STATUS',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 13))),
+              Expanded(
+                  flex: 2,
+                  child: Text('TIME',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 13))),
+              Expanded(
+                  flex: 1,
+                  child: Text('ACTION',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900, fontSize: 13))),
+            ],
+          ),
+        ),
+        // قائمة الطلبات (تحمل فقط ما يظهر على الشاشة)
+        Expanded(
+          child: ListView.separated(
+            itemCount: orders.length,
+            physics: const BouncingScrollPhysics(),
+            separatorBuilder: (context, index) =>
+                const Divider(height: 1, color: Color(0xFFF1F3F5)),
+            itemBuilder: (context, index) {
+              final order = orders[index];
+              return _buildOrderRow(order);
+            },
+          ),
+        ),
+      ],
     );
   }
 
-  DataRow _buildOrderRow(Order order) {
-    return DataRow(cells: [
-      DataCell(Text("#${order.id.substring(order.id.length - 5).toUpperCase()}",
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-      DataCell(Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8)),
-        child: Text("T-${order.tableNumber}",
-            style: const TextStyle(
-                color: Colors.blue, fontWeight: FontWeight.bold)),
-      )),
-      DataCell(Text("${order.items.length} Items")),
-      DataCell(Text("\$${order.totalPrice.toStringAsFixed(2)}",
-          style: const TextStyle(fontWeight: FontWeight.bold))),
-      DataCell(_buildStatusDropdown(order.status, order.id)),
-      DataCell(Text(order.createdAt.toString().substring(11, 16))),
-      DataCell(IconButton(
-        icon: Icon(Icons.visibility_rounded, color: brandGreen),
-        onPressed: () => _showGlassDetails(context, order),
-      )),
-    ]);
-  }
-
   Widget _buildStatusDropdown(String status, String orderId) {
-    Color color = status == 'Done' || status == 'Delivered'
+    Color color = (status == 'Done' || status == 'Delivered')
         ? brandGreen
         : (status == 'Cancelled' ? Colors.red : Colors.orange);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      height: 35,
-      decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.2))),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: statusOptions.contains(status) ? status : 'Pending',
-          icon: Icon(Icons.keyboard_arrow_down_rounded, color: color, size: 16),
-          style: TextStyle(
-              color: color, fontWeight: FontWeight.bold, fontSize: 12),
-          onChanged: (newStatus) async {
-            if (newStatus != null) {
-              await FirebaseService.updateOrderStatus(orderId, newStatus);
-            }
-          },
-          items: statusOptions
-              .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-              .toList(),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        height: 32,
+        decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.2))),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: statusOptions.contains(status) ? status : 'Pending',
+            icon:
+                Icon(Icons.keyboard_arrow_down_rounded, color: color, size: 16),
+            dropdownColor: Colors.white,
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.bold, fontSize: 11),
+            onChanged: (newStatus) async {
+              if (newStatus != null && newStatus != status) {
+                await FirebaseService.updateOrderStatus(orderId, newStatus);
+              }
+            },
+            items: statusOptions
+                .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                .toList(),
+          ),
         ),
       ),
     );
@@ -235,11 +294,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
             child: ChoiceChip(
               label: Text(status),
               selected: isSelected,
-              onSelected: (val) => setState(() => selectedFilter = status),
+              onSelected: (val) {
+                if (val) setState(() => selectedFilter = status);
+              },
               selectedColor: brandGreen,
               backgroundColor: Colors.white,
               labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black87,
+                  color: isSelected ? Colors.white : Colors.black,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -275,14 +336,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // رقم الطلب بالأسود العريض
                     Text(
-                      "Order #${order.id.substring(order.id.length - 5).toUpperCase()}",
+                      "Order #${order.id.substring(order.id.length.clamp(0, 5)).toUpperCase()}",
                       style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900, // أسود عريض جداً
-                        color: Colors.black,
-                      ),
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black),
                     ),
                     const Divider(height: 30, color: Color(0xFFEEEEEE)),
                     Flexible(
@@ -291,30 +350,24 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           children: order.items
                               .map((item) => ListTile(
                                     contentPadding: EdgeInsets.zero,
-                                    title: Text(
-                                      item.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black, // اسم الصنف أسود
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    trailing: Text(
-                                      "x${item.quantity}",
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                        color:
-                                            Colors.black, // الكمية سوداء وواضحة
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    subtitle: item.notes != null &&
-                                            item.notes!.isNotEmpty
+                                    title: Text(item.name,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black,
+                                            fontSize: 16)),
+                                    trailing: Text("x${item.quantity}",
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                            color: Colors.black,
+                                            fontSize: 16)),
+                                    // تم إضافة الحجم هنا مع الملاحظات
+                                    subtitle: (item.size != null ||
+                                            (item.notes != null &&
+                                                item.notes!.isNotEmpty))
                                         ? Text(
-                                            item.notes!,
+                                            "${item.size != null ? 'Size: ${item.size}' : ''}${item.size != null && item.notes != null && item.notes!.isNotEmpty ? ' | ' : ''}${item.notes ?? ''}",
                                             style: TextStyle(
-                                                color: Colors.grey
-                                                    .shade800), // ملاحظات غامقة
+                                                color: Colors.grey.shade800),
                                           )
                                         : null,
                                   ))
@@ -326,43 +379,32 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          "Total Amount",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black, // النص أسود
-                          ),
-                        ),
-                        Text(
-                          "\$${order.totalPrice.toStringAsFixed(2)}",
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                            color: brandGreen, // السعر بالأخضر الخاص بك للتميز
-                          ),
-                        ),
+                        const Text("Total Amount",
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black)),
+                        Text("\$${order.totalPrice.toStringAsFixed(2)}",
+                            style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                color: brandGreen)),
                       ],
                     ),
                     const SizedBox(height: 25),
                     ElevatedButton(
                       onPressed: () => Navigator.pop(ctx),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black, // الزر أسود صريح
+                        backgroundColor: Colors.black,
                         minimumSize: const Size(double.infinity, 55),
-                        elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
+                            borderRadius: BorderRadius.circular(15)),
                       ),
-                      child: const Text(
-                        "Close",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: const Text("Close",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
                     )
                   ],
                 ),
@@ -371,93 +413,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
         );
       },
-    );
-  }
-
-  // ميثود السايد بار الموحدة
-  Widget _buildSidebar(BuildContext context, AuthProvider authProvider) {
-    final String location = GoRouterState.of(context).uri.toString();
-    return Container(
-      width: 260,
-      height: double.infinity,
-      color: Colors.white,
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Text("Romdol.",
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00B686))),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.grid_view_rounded,
-                    "Dashboard",
-                    "/admin/dashboard",
-                    location.contains("dashboard")),
-                _sidebarItem(context, authProvider, Icons.shopping_bag_outlined,
-                    "Orders", "/admin/orders", location.contains("orders")),
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.fastfood_outlined,
-                    "Products",
-                    "/admin/products",
-                    location.contains("products")),
-                _sidebarItem(
-                    context,
-                    authProvider,
-                    Icons.category_rounded,
-                    "Categories",
-                    "/admin/categories",
-                    location.contains("categories")),
-              ],
-            ),
-          ),
-          const Divider(indent: 20, endIndent: 20),
-          _sidebarItem(context, authProvider, Icons.logout_rounded, "Logout",
-              "/admin/login", false,
-              isLogout: true),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _sidebarItem(BuildContext context, AuthProvider authProvider,
-      IconData icon, String label, String route, bool isActive,
-      {bool isLogout = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        onTap: () async {
-          if (isLogout) {
-            await authProvider.logout();
-            if (mounted) context.go(route);
-          } else {
-            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-              Navigator.pop(context);
-            }
-            context.go(route);
-          }
-        },
-        leading: Icon(icon,
-            color: isActive ? brandGreen : Colors.grey[400], size: 22),
-        title: Text(label,
-            style: TextStyle(
-                color: isActive ? brandGreen : Colors.grey[700],
-                fontSize: 15,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.w500)),
-        tileColor: isActive ? brandGreen.withOpacity(0.08) : Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        dense: true,
-      ),
     );
   }
 }

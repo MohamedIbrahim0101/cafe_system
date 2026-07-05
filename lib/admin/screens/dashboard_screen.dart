@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:premium_store/state/auth_brovider.dart';
-import 'package:premium_store/state/product_brovider.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fl_chart/fl_chart.dart';
+
+// استيراد السايد بار الموحد
+import 'package:premium_store/app/sidebar.dart';
+import 'package:premium_store/state/auth_brovider.dart';
+import 'package:premium_store/state/product_brovider.dart';
 import '../../state/order_provider.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -15,12 +18,12 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String selectedPeriod = "This Week";
-  final Color primaryGreen = const Color(0xFF00B686); // اللون الخاص بك
+  final Color primaryGreen = const Color(0xFF00B686);
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // دالة لحساب أرباح يوم محدد في الأسبوع الحالي
   double _getRevenueForDay(List<dynamic> orders, int weekdayIndex) {
     final now = DateTime.now();
-    // الحصول على تاريخ يوم الاثنين من هذا الأسبوع كمبدأ
     final firstDayOfWeek = now.subtract(Duration(days: now.weekday - 1));
     final targetDate = firstDayOfWeek.add(Duration(days: weekdayIndex));
 
@@ -52,67 +55,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final bool isMobile = screenWidth < 950;
 
     return Scaffold(
+      key: _scaffoldKey, // أضفنا الـ Key للتحكم في الـ Drawer
       backgroundColor: const Color(0xFFF8F9FA),
-      drawer:
-          isMobile ? Drawer(child: _buildSidebar(context, authProvider)) : null,
-      appBar: isMobile
-          ? AppBar(
-              title: const Text("Admin Dashboard",
-                  style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold)),
-              backgroundColor: Colors.white,
-              elevation: 0,
-              iconTheme: const IconThemeData(color: Colors.black))
-          : null,
+      // استخدام السايد بار الموحد في الـ Drawer للموبايل
+      drawer: isMobile ? const Drawer(child: AdminSidebar()) : null,
       body: Row(
         children: [
-          if (!isMobile) _buildSidebar(context, authProvider),
+          // استخدام السايد بار الموحد للويب
+          if (!isMobile) const AdminSidebar(),
           Expanded(
             child: SelectionArea(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(isMobile ? 16.0 : 32.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(authProvider),
-                    const SizedBox(height: 32),
-                    _buildStatGrid(
-                        orderProvider.orders.length,
-                        totalRevenue,
-                        activeOrders,
-                        productProvider.products.length,
-                        isMobile),
-                    const SizedBox(height: 32),
-                    LayoutBuilder(builder: (context, constraints) {
-                      if (constraints.maxWidth > 1150) {
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                                flex: 3,
-                                child:
-                                    _buildDetailedChart(orderProvider.orders)),
-                            const SizedBox(width: 24),
-                            Expanded(
-                                flex: 2,
-                                child: _buildRecentOrdersSection(context,
-                                    orderProvider, isMobile, screenWidth)),
-                          ],
-                        );
-                      } else {
-                        return Column(
-                          children: [
-                            _buildDetailedChart(orderProvider.orders),
-                            const SizedBox(height: 24),
-                            _buildRecentOrdersSection(
-                                context, orderProvider, isMobile, screenWidth),
-                          ],
-                        );
-                      }
-                    }),
-                  ],
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(isMobile ? 16.0 : 32.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(isMobile, authProvider),
+                      const SizedBox(height: 32),
+                      _buildStatGrid(
+                          orderProvider.orders.length,
+                          totalRevenue,
+                          activeOrders,
+                          productProvider.products.length,
+                          isMobile),
+                      const SizedBox(height: 32),
+                      LayoutBuilder(builder: (context, constraints) {
+                        if (constraints.maxWidth > 1150) {
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                  flex: 3,
+                                  child: _buildDetailedChart(
+                                      orderProvider.orders)),
+                              const SizedBox(width: 24),
+                              Expanded(
+                                  flex: 2,
+                                  child: _buildRecentOrdersSection(context,
+                                      orderProvider, isMobile, screenWidth)),
+                            ],
+                          );
+                        } else {
+                          return Column(
+                            children: [
+                              _buildDetailedChart(orderProvider.orders),
+                              const SizedBox(height: 24),
+                              _buildRecentOrdersSection(context, orderProvider,
+                                  isMobile, screenWidth),
+                            ],
+                          );
+                        }
+                      }),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -122,31 +118,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildHeader(AuthProvider auth) {
+  Widget _buildHeader(bool isMobile, AuthProvider auth) {
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 20,
       runSpacing: 15,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("Dashboard Overview",
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black)),
-            Text("Welcome back, ${auth.user?.email?.split('@')[0] ?? 'Admin'}!",
-                style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+            if (isMobile)
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: IconButton(
+                  icon: const Icon(Icons.menu_rounded, color: Colors.black),
+                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                ),
+              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Dashboard Overview",
+                    style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black)),
+                Text(
+                    "Welcome back, ${auth.user?.email?.split('@')[0] ?? 'Admin'}!",
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+              ],
+            ),
           ],
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: primaryGreen.withOpacity(0.1),
+            color: primaryGreen.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: primaryGreen.withOpacity(0.5)),
+            border: Border.all(color: primaryGreen.withValues(alpha: 0.5)),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
@@ -165,8 +175,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // --- بقية الـ Widgets (Chart, Stats, Recent Orders) تظل كما هي ---
+  // (قمت باختصارها هنا لسهولة القراءة، لكنها موجودة في الكود الأصلي الخاص بك)
+
   Widget _buildDetailedChart(List<dynamic> orders) {
-    // إنشاء النقاط بناءً على أرباح الأسبوع الفعلي
     List<FlSpot> weekSpots = List.generate(7, (index) {
       double dailyRevenue = _getRevenueForDay(orders, index);
       return FlSpot(index.toDouble(), dailyRevenue);
@@ -195,7 +207,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
                     getTooltipColor: (touchedSpot) =>
-                        Colors.black.withOpacity(0.8),
+                        Colors.black.withValues(alpha: 0.8),
                     getTooltipItems: (spots) => spots
                         .map((s) => LineTooltipItem(
                             '\$${s.y.toStringAsFixed(2)}',
@@ -209,7 +221,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   show: true,
                   drawVerticalLine: false,
                   getDrawingHorizontalLine: (value) => FlLine(
-                      color: Colors.grey.withOpacity(0.1), strokeWidth: 1),
+                      color: Colors.grey.withValues(alpha: 0.1),
+                      strokeWidth: 1),
                 ),
                 titlesData: FlTitlesData(
                   rightTitles: const AxisTitles(
@@ -251,7 +264,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderData: FlBorderData(show: false),
                 lineBarsData: [
                   LineChartBarData(
-                    spots: weekSpots, // هنا البيانات التلقائية
+                    spots: weekSpots,
                     isCurved: true,
                     color: primaryGreen,
                     barWidth: 4,
@@ -269,8 +282,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       show: true,
                       gradient: LinearGradient(
                         colors: [
-                          primaryGreen.withOpacity(0.2),
-                          primaryGreen.withOpacity(0.0)
+                          primaryGreen.withValues(alpha: 0.2),
+                          primaryGreen.withValues(alpha: 0.0)
                         ],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -321,14 +334,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)
           ]),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12)),
             child: Icon(icon, color: color, size: 28),
           ),
@@ -398,8 +412,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Container(
                       width: 45,
                       height: 45,
-                      decoration: BoxRadius(
-                          color: Colors.grey[100] ?? Colors.grey,
+                      decoration: BoxDecoration(
+                          color: Colors.grey[100],
                           borderRadius: BorderRadius.circular(10)),
                       child: const Icon(Icons.receipt_long_outlined,
                           color: Colors.black54),
@@ -448,69 +462,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
         style:
             TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold));
   }
-
-  Widget _buildSidebar(BuildContext context, AuthProvider auth) {
-    final String location = GoRouterState.of(context).uri.toString();
-    return Container(
-      width: 260,
-      color: Colors.white,
-      child: Column(
-        children: [
-          const SizedBox(height: 40),
-          Text("Romdol.",
-              style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: primaryGreen)),
-          const SizedBox(height: 40),
-          _sidebarItem(context, Icons.grid_view_rounded, "Dashboard",
-              "/admin/dashboard", location == "/admin/dashboard"),
-          _sidebarItem(context, Icons.shopping_cart_outlined, "Orders",
-              "/admin/orders", location == "/admin/orders"),
-          _sidebarItem(context, Icons.fastfood_outlined, "Products",
-              "/admin/products", location == "/admin/products"),
-          _sidebarItem(context, Icons.table_restaurant_outlined, "Tables",
-              "/admin/tables", location == "/admin/tables"),
-          const Spacer(),
-          const Divider(),
-          _sidebarItem(
-              context, Icons.logout_rounded, "Logout", "/admin/login", false,
-              isLogout: true),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _sidebarItem(BuildContext context, IconData icon, String label,
-      String route, bool isActive,
-      {bool isLogout = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        onTap: () async {
-          if (isLogout) {
-            await context.read<AuthProvider>().logout();
-            if (context.mounted) context.go('/admin/login');
-          } else {
-            context.go(route);
-          }
-        },
-        leading: Icon(icon, color: isActive ? primaryGreen : Colors.grey[400]),
-        title: Text(label,
-            style: TextStyle(
-                color: isActive ? Colors.black : Colors.grey[600],
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
-        tileColor:
-            isActive ? primaryGreen.withOpacity(0.08) : Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-}
-
-// تعديل بسيط في BoxRadius ليصبح BoxDecoration
-BoxDecoration BoxRadius(
-    {required Color color, required BorderRadius borderRadius}) {
-  return BoxDecoration(color: color, borderRadius: borderRadius);
 }

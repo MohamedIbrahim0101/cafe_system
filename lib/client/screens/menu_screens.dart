@@ -20,7 +20,9 @@ class MenuScreen extends StatefulWidget {
 
 class _MenuScreenState extends State<MenuScreen> {
   String selectedCategoryId = '';
+  String _searchQuery = ''; // متغير للبحث
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
   bool _isAppBarExpanded = true;
 
   @override
@@ -40,7 +42,6 @@ class _MenuScreenState extends State<MenuScreen> {
     });
   }
 
-  // دالة لجلب رسالة ترحيبية بناءً على الوقت
   String _getGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) return "Good Morning ☀️";
@@ -51,6 +52,7 @@ class _MenuScreenState extends State<MenuScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -62,12 +64,16 @@ class _MenuScreenState extends State<MenuScreen> {
     final cartProvider = context.watch<CartProvider>();
     final orderProvider = context.watch<OrderProvider>();
 
-    final products = selectedCategoryId.isEmpty
-        ? productProvider.products.where((p) => p.isAvailable).toList()
-        : productProvider
-            .getProductsByCategory(selectedCategoryId)
-            .where((p) => p.isAvailable)
-            .toList();
+    // منطق التصفية المطور (حسب التصنيف + نص البحث)
+    final allProducts = selectedCategoryId.isEmpty
+        ? productProvider.products
+        : productProvider.getProductsByCategory(selectedCategoryId);
+
+    final products = allProducts
+        .where((p) =>
+            p.isAvailable &&
+            p.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
 
     const Color primaryColor = Color(0xFF00B686);
 
@@ -78,12 +84,11 @@ class _MenuScreenState extends State<MenuScreen> {
           CustomScrollView(
             controller: _scrollController,
             slivers: [
-              // --- Header (SliverAppBar) ---
               SliverAppBar(
-                expandedHeight: 250, // تم زيادة الطول لإبراز اسم المطعم
+                expandedHeight: 250,
                 pinned: true,
                 elevation: 0,
-                automaticallyImplyLeading: false, // حذف زر الرجوع
+                automaticallyImplyLeading: false,
                 backgroundColor: primaryColor,
                 flexibleSpace: FlexibleSpaceBar(
                   centerTitle: true,
@@ -103,14 +108,12 @@ class _MenuScreenState extends State<MenuScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // خلفية الصورة مع Overlay داكن
                       if (restaurant?.coverImageUrl != null &&
                           restaurant!.coverImageUrl.isNotEmpty)
                         Image.network(restaurant.coverImageUrl,
                             fit: BoxFit.cover)
                       else
                         Container(color: primaryColor),
-
                       const DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -120,8 +123,6 @@ class _MenuScreenState extends State<MenuScreen> {
                           ),
                         ),
                       ),
-
-                      // اسم المطعم ورقم الطاولة والترحيب (في المنتصف)
                       Positioned(
                         bottom: 40,
                         left: 0,
@@ -138,12 +139,11 @@ class _MenuScreenState extends State<MenuScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              restaurant?.name.toUpperCase() ??
-                                  "OUR RESTAURANT",
+                              restaurant?.name.toUpperCase() ?? "OUR RESTAURANT",
                               textAlign: TextAlign.center,
                               style: GoogleFonts.cinzel(
                                 color: Colors.white,
-                                fontSize: 28, // اسم كبير وواضح
+                                fontSize: 28,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 2,
                               ),
@@ -173,14 +173,36 @@ class _MenuScreenState extends State<MenuScreen> {
                   ),
                 ),
               ),
-
-              // --- Categories ---
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 20, bottom: 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // شريط البحث
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (val) => setState(() => _searchQuery = val),
+                          decoration: InputDecoration(
+                            hintText: "Search in menu...",
+                            prefixIcon: const Icon(Icons.search, color: primaryColor),
+                            filled: true,
+                            fillColor: primaryColor,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(color: Colors.grey.shade200),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
@@ -198,8 +220,6 @@ class _MenuScreenState extends State<MenuScreen> {
                   ),
                 ),
               ),
-
-              // --- Products Grid ---
               if (productProvider.isLoading)
                 const SliverFillRemaining(
                   child: Center(
@@ -207,7 +227,7 @@ class _MenuScreenState extends State<MenuScreen> {
                 )
               else if (products.isEmpty)
                 const SliverFillRemaining(
-                  child: Center(child: Text("No products available")),
+                  child: Center(child: Text("No products found")),
                 )
               else
                 SliverPadding(
@@ -227,12 +247,9 @@ class _MenuScreenState extends State<MenuScreen> {
                     ),
                   ),
                 ),
-
               const SliverToBoxAdapter(child: SizedBox(height: 150)),
             ],
           ),
-
-          // --- Bottom UI (Active Order Bar & Floating Cart) ---
           Positioned(
             bottom: 25,
             left: 15,
@@ -252,12 +269,11 @@ class _MenuScreenState extends State<MenuScreen> {
     );
   }
 
-  // --- Widgets (UI Components) ---
-
+  // (باقي الدوال تظل كما هي دون تغيير)
+  
   Widget _buildActiveOrderBar(OrderProvider orderProvider) {
     final activeOrder = orderProvider.currentOrder;
     if (activeOrder == null) return const SizedBox.shrink();
-
     final s = activeOrder.status.toLowerCase();
     final bool isFinal = s.contains('deliv') ||
         s.contains('paid') ||
@@ -270,28 +286,25 @@ class _MenuScreenState extends State<MenuScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF00B686),
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black12,
-                blurRadius: 10,
-                offset: const Offset(0, 5))
-          ],
-        ),
+            color: const Color(0xFF00B686),
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 10,
+                  offset: const Offset(0, 5))
+            ]),
         child: Row(
           children: [
             const Icon(Icons.sync, color: Colors.white, size: 20),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                "Order #${activeOrder.id.substring(activeOrder.id.length - 4)} is ${activeOrder.status}",
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13),
-              ),
-            ),
+                child: Text(
+                    "Order #${activeOrder.id.substring(activeOrder.id.length - 4)} is ${activeOrder.status}",
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13))),
             const Text("TRACK",
                 style: TextStyle(
                     color: Colors.white,
@@ -311,20 +324,27 @@ class _MenuScreenState extends State<MenuScreen> {
             .fold(0, (prev, element) => prev! + element.quantity) ??
         0;
 
+    String displayPrice = product.price.toStringAsFixed(2);
+    if (product.hasSizes && product.sizes.isNotEmpty) {
+      double minPrice = product.sizes.values
+          .map((e) => (e as num).toDouble())
+          .reduce((a, b) => a < b ? a : b);
+      displayPrice = minPrice.toStringAsFixed(2);
+    }
+
     return GestureDetector(
       onTap: () =>
           context.push('/product/${product.id}?table=${widget.tableNumber}'),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 15,
-                offset: const Offset(0, 8))
-          ],
-        ),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8))
+            ]),
         child: Column(
           children: [
             Expanded(
@@ -377,7 +397,7 @@ class _MenuScreenState extends State<MenuScreen> {
                         style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 14)),
                     const SizedBox(height: 4),
-                    Text('EGP ${product.price.toStringAsFixed(2)}',
+                    Text('EGP $displayPrice',
                         style: TextStyle(
                             color: primary,
                             fontWeight: FontWeight.w900,
@@ -419,20 +439,11 @@ class _MenuScreenState extends State<MenuScreen> {
                     width: 65,
                     height: 65,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isSelected ? primary : Colors.white,
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                  color: primary.withOpacity(0.3),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 5))
-                            ]
-                          : [],
-                      border: Border.all(
-                          color: isSelected ? primary : Colors.grey.shade200,
-                          width: 2),
-                    ),
+                        shape: BoxShape.circle,
+                        color: isSelected ? primary : Colors.white,
+                        border: Border.all(
+                            color: isSelected ? primary : Colors.grey.shade200,
+                            width: 2)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(35),
                       child: isAll
@@ -466,15 +477,14 @@ class _MenuScreenState extends State<MenuScreen> {
     return Container(
       height: 65,
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 10))
-        ],
-      ),
+          color: const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10))
+          ]),
       child: InkWell(
         onTap: () => context.push('/cart?table=${widget.tableNumber}'),
         borderRadius: BorderRadius.circular(20),
