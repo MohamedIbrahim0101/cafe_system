@@ -1,12 +1,19 @@
+// lib/screens/admin/dashboard_screen.dart
+
 import 'package:flutter/material.dart';
+import 'package:premium_store/state/auth_brovider.dart';
+import 'package:premium_store/state/product_brovider.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-// استيراد السايد بار الموحد
+// Localization
+import 'package:premium_store/localization/app_translations.dart';
+import 'package:premium_store/state/language_provider.dart';
+
+// استيراد السايد بار والـ Providers بالأسماء الصحيحة
 import 'package:premium_store/app/sidebar.dart';
-import 'package:premium_store/state/auth_brovider.dart';
-import 'package:premium_store/state/product_brovider.dart';
+
 import '../../state/order_provider.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -18,95 +25,198 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String selectedPeriod = "This Week";
-  final Color primaryGreen = const Color(0xFF00B686);
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // دالة لحساب أرباح يوم محدد في الأسبوع الحالي
-  double _getRevenueForDay(List<dynamic> orders, int weekdayIndex) {
+  final Color primaryGreen = const Color(0xFF00B686);
+
+  final GlobalKey<ScaffoldState> _scaffoldKey =
+      GlobalKey<ScaffoldState>();
+
+  // ============================================================
+  // Translation Helper
+  // ============================================================
+
+  String _tr(String key) {
+    final languageProvider = Provider.of<LanguageProvider>(context);
+
+    return AppTranslations.get(
+      languageProvider.locale.languageCode,
+      key,
+    );
+  }
+
+  // ============================================================
+  // Get Revenue For Specific Day
+  // ============================================================
+
+  double _getRevenueForDay(
+    List<dynamic> orders,
+    int weekdayIndex,
+  ) {
     final now = DateTime.now();
-    final firstDayOfWeek = now.subtract(Duration(days: now.weekday - 1));
-    final targetDate = firstDayOfWeek.add(Duration(days: weekdayIndex));
+
+    final firstDayOfWeek = now.subtract(
+      Duration(days: now.weekday - 1),
+    );
+
+    final targetDate = firstDayOfWeek.add(
+      Duration(days: weekdayIndex),
+    );
 
     return orders.where((o) {
-      final isSuccess = ['Completed', 'Served', 'Delivered'].contains(o.status);
-      final isSameDay = o.createdAt.year == targetDate.year &&
+      final status = o.status.toString().toLowerCase();
+
+      final isSuccess =
+          status.contains('complete') ||
+          status.contains('served') ||
+          status.contains('paid') ||
+          status.contains('deliv');
+
+      final isSameDay =
+          o.createdAt.year == targetDate.year &&
           o.createdAt.month == targetDate.month &&
           o.createdAt.day == targetDate.day;
+
       return isSuccess && isSameDay;
-    }).fold(0.0, (sum, o) => sum + o.totalPrice);
+    }).fold(
+      0.0,
+      (sum, o) => sum + o.totalPrice,
+    );
   }
+
+  // ============================================================
+  // Build
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
     final orderProvider = context.watch<OrderProvider>();
+
     final productProvider = context.watch<ProductProvider>();
+
     final authProvider = context.watch<AuthProvider>();
 
-    final totalRevenue = orderProvider.orders
-        .where((o) => ['Completed', 'Served', 'Delivered'].contains(o.status))
-        .fold<double>(0.0, (sum, o) => sum + o.totalPrice);
+    final totalRevenue = orderProvider.orders.where((o) {
+      final s = o.status.toString().toLowerCase();
 
-    final activeOrders = orderProvider.orders
-        .where(
-            (o) => !['Completed', 'Cancelled', 'Delivered'].contains(o.status))
-        .length;
+      return s.contains('complete') ||
+          s.contains('served') ||
+          s.contains('paid') ||
+          s.contains('deliv');
+    }).fold<double>(
+      0.0,
+      (sum, o) => sum + o.totalPrice,
+    );
+
+    final activeOrders = orderProvider.orders.where((o) {
+      final s = o.status.toString().toLowerCase();
+
+      return !s.contains('complete') &&
+          !s.contains('cancel') &&
+          !s.contains('paid');
+    }).length;
 
     final screenWidth = MediaQuery.of(context).size.width;
+
     final bool isMobile = screenWidth < 950;
 
     return Scaffold(
-      key: _scaffoldKey, // أضفنا الـ Key للتحكم في الـ Drawer
+      key: _scaffoldKey,
+
       backgroundColor: const Color(0xFFF8F9FA),
-      // استخدام السايد بار الموحد في الـ Drawer للموبايل
-      drawer: isMobile ? const Drawer(child: AdminSidebar()) : null,
+
+      drawer: isMobile
+          ? const Drawer(
+              child: AdminSidebar(),
+            )
+          : null,
+
       body: Row(
         children: [
-          // استخدام السايد بار الموحد للويب
+          // Desktop Sidebar
           if (!isMobile) const AdminSidebar(),
+
           Expanded(
             child: SelectionArea(
               child: SafeArea(
                 child: SingleChildScrollView(
-                  padding: EdgeInsets.all(isMobile ? 16.0 : 32.0),
+                  padding: EdgeInsets.all(
+                    isMobile ? 16.0 : 32.0,
+                  ),
+
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+
                     children: [
-                      _buildHeader(isMobile, authProvider),
+                      // Header
+                      _buildHeader(
+                        isMobile,
+                        authProvider,
+                      ),
+
                       const SizedBox(height: 32),
+
+                      // Statistics
                       _buildStatGrid(
-                          orderProvider.orders.length,
-                          totalRevenue,
-                          activeOrders,
-                          productProvider.products.length,
-                          isMobile),
+                        orderProvider.orders.length,
+                        totalRevenue,
+                        activeOrders,
+                        productProvider.products.length,
+                        isMobile,
+                      ),
+
                       const SizedBox(height: 32),
-                      LayoutBuilder(builder: (context, constraints) {
-                        if (constraints.maxWidth > 1150) {
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
+
+                      // Chart + Recent Orders
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxWidth > 1150) {
+                            return Row(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+
+                              children: [
+                                Expanded(
                                   flex: 3,
                                   child: _buildDetailedChart(
-                                      orderProvider.orders)),
-                              const SizedBox(width: 24),
-                              Expanded(
+                                    orderProvider.orders,
+                                  ),
+                                ),
+
+                                const SizedBox(width: 24),
+
+                                Expanded(
                                   flex: 2,
-                                  child: _buildRecentOrdersSection(context,
-                                      orderProvider, isMobile, screenWidth)),
-                            ],
-                          );
-                        } else {
-                          return Column(
-                            children: [
-                              _buildDetailedChart(orderProvider.orders),
-                              const SizedBox(height: 24),
-                              _buildRecentOrdersSection(context, orderProvider,
-                                  isMobile, screenWidth),
-                            ],
-                          );
-                        }
-                      }),
+                                  child:
+                                      _buildRecentOrdersSection(
+                                    context,
+                                    orderProvider,
+                                    isMobile,
+                                    screenWidth,
+                                  ),
+                                ),
+                              ],
+                            );
+                          } else {
+                            return Column(
+                              children: [
+                                _buildDetailedChart(
+                                  orderProvider.orders,
+                                ),
+
+                                const SizedBox(height: 24),
+
+                                _buildRecentOrdersSection(
+                                  context,
+                                  orderProvider,
+                                  isMobile,
+                                  screenWidth,
+                                ),
+                              ],
+                            );
+                          }
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -118,174 +228,390 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildHeader(bool isMobile, AuthProvider auth) {
+  // ============================================================
+  // Header
+  // ============================================================
+
+  Widget _buildHeader(
+    bool isMobile,
+    AuthProvider auth,
+  ) {
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 20,
       runSpacing: 15,
+
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Mobile Menu
             if (isMobile)
               Padding(
-                padding: const EdgeInsets.only(right: 8.0),
+                padding: const EdgeInsets.only(
+                  right: 8.0,
+                ),
+
                 child: IconButton(
-                  icon: const Icon(Icons.menu_rounded, color: Colors.black),
-                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                  icon: const Icon(
+                    Icons.menu_rounded,
+                    color: Colors.black,
+                  ),
+
+                  onPressed: () {
+                    _scaffoldKey.currentState
+                        ?.openDrawer();
+                  },
                 ),
               ),
+
+            // Dashboard Title
             Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+
               children: [
-                const Text("Dashboard Overview",
-                    style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.black)),
                 Text(
-                    "Welcome back, ${auth.user?.email?.split('@')[0] ?? 'Admin'}!",
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+                  _tr('dashboard_overview'),
+
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                  ),
+                ),
+
+                Text(
+                  "${_tr('welcome_back_user')}, "
+                  "${auth.user?.email?.split('@')[0] ?? 'Admin'}!",
+
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
               ],
             ),
           ],
         ),
+
+        // Period Dropdown
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: primaryGreen.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: primaryGreen.withValues(alpha: 0.5)),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
           ),
+
+          decoration: BoxDecoration(
+            color: primaryGreen.withValues(
+              alpha: 0.1,
+            ),
+
+            borderRadius: BorderRadius.circular(12),
+
+            border: Border.all(
+              color: primaryGreen.withValues(
+                alpha: 0.5,
+              ),
+            ),
+          ),
+
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: selectedPeriod,
-              icon: Icon(Icons.keyboard_arrow_down, color: primaryGreen),
-              style:
-                  TextStyle(color: primaryGreen, fontWeight: FontWeight.bold),
-              items: ["Today", "This Week", "This Month"]
-                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                  .toList(),
-              onChanged: (v) => setState(() => selectedPeriod = v!),
+
+              icon: Icon(
+                Icons.keyboard_arrow_down,
+                color: primaryGreen,
+              ),
+
+              style: TextStyle(
+                color: primaryGreen,
+                fontWeight: FontWeight.bold,
+              ),
+
+              items: [
+                "Today",
+                "This Week",
+                "This Month",
+              ].map(
+                (e) {
+                  return DropdownMenuItem(
+                    value: e,
+                    child: Text(
+                      _getPeriodTranslation(e),
+                    ),
+                  );
+                },
+              ).toList(),
+
+              onChanged: (v) {
+                if (v == null) return;
+
+                setState(() {
+                  selectedPeriod = v;
+                });
+              },
             ),
           ),
-        )
+        ),
       ],
     );
   }
 
-  // --- بقية الـ Widgets (Chart, Stats, Recent Orders) تظل كما هي ---
-  // (قمت باختصارها هنا لسهولة القراءة، لكنها موجودة في الكود الأصلي الخاص بك)
+  // ============================================================
+  // Period Translation
+  // ============================================================
 
-  Widget _buildDetailedChart(List<dynamic> orders) {
-    List<FlSpot> weekSpots = List.generate(7, (index) {
-      double dailyRevenue = _getRevenueForDay(orders, index);
-      return FlSpot(index.toDouble(), dailyRevenue);
-    });
+  String _getPeriodTranslation(String period) {
+    switch (period) {
+      case "Today":
+        return _tr('today');
+
+      case "This Week":
+        return _tr('this_week');
+
+      case "This Month":
+        return _tr('this_month');
+
+      default:
+        return period;
+    }
+  }
+
+  // ============================================================
+  // Detailed Revenue Chart
+  // ============================================================
+
+  Widget _buildDetailedChart(
+    List<dynamic> orders,
+  ) {
+    List<FlSpot> weekSpots = List.generate(
+      7,
+      (index) {
+        double dailyRevenue =
+            _getRevenueForDay(
+          orders,
+          index,
+        );
+
+        return FlSpot(
+          index.toDouble(),
+          dailyRevenue,
+        );
+      },
+    );
 
     return Container(
       height: 400,
-      padding: const EdgeInsets.fromLTRB(10, 24, 24, 24),
+
+      padding: const EdgeInsets.fromLTRB(
+        10,
+        24,
+        24,
+        24,
+      ),
+
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+
         children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 14),
-            child: Text("Revenue Analytics",
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black)),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 14,
+            ),
+
+            child: Text(
+              _tr('revenue_analytics'),
+
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
           ),
+
           const SizedBox(height: 30),
+
           Expanded(
             child: LineChart(
               LineChartData(
                 lineTouchData: LineTouchData(
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (touchedSpot) =>
-                        Colors.black.withValues(alpha: 0.8),
-                    getTooltipItems: (spots) => spots
-                        .map((s) => LineTooltipItem(
-                            '\$${s.y.toStringAsFixed(2)}',
-                            const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)))
-                        .toList(),
+                  touchTooltipData:
+                      LineTouchTooltipData(
+                    getTooltipColor:
+                        (touchedSpot) =>
+                            Colors.black.withValues(
+                      alpha: 0.8,
+                    ),
+
+                    getTooltipItems: (spots) =>
+                        spots
+                            .map(
+                              (s) =>
+                                  LineTooltipItem(
+                                '\$${s.y.toStringAsFixed(2)}',
+
+                                const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight:
+                                      FontWeight.bold,
+                                ),
+                              ),
+                            )
+                            .toList(),
                   ),
                 ),
+
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  getDrawingHorizontalLine: (value) => FlLine(
-                      color: Colors.grey.withValues(alpha: 0.1),
-                      strokeWidth: 1),
+
+                  getDrawingHorizontalLine:
+                      (value) => FlLine(
+                    color:
+                        Colors.grey.withValues(
+                      alpha: 0.1,
+                    ),
+
+                    strokeWidth: 1,
+                  ),
                 ),
+
                 titlesData: FlTitlesData(
-                  rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles:
+                      const AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: false,
+                    ),
+                  ),
+
+                  topTitles:
+                      const AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: false,
+                    ),
+                  ),
+
+                  // Bottom days
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      getTitlesWidget: (val, meta) {
-                        const days = [
-                          'Mon',
-                          'Tue',
-                          'Wed',
-                          'Thu',
-                          'Fri',
-                          'Sat',
-                          'Sun'
+
+                      getTitlesWidget:
+                          (val, meta) {
+                        final days = [
+                          _tr('monday'),
+                          _tr('tuesday'),
+                          _tr('wednesday'),
+                          _tr('thursday'),
+                          _tr('friday'),
+                          _tr('saturday'),
+                          _tr('sunday'),
                         ];
-                        if (val >= 0 && val < 7) {
-                          return Text(days[val.toInt()],
-                              style: TextStyle(
-                                  color: Colors.grey[400], fontSize: 10));
+
+                        if (val >= 0 &&
+                            val < 7) {
+                          return Text(
+                            days[val.toInt()],
+
+                            style: TextStyle(
+                              color:
+                                  Colors.grey[400],
+                              fontSize: 10,
+                            ),
+                          );
                         }
+
                         return const Text('');
                       },
                     ),
                   ),
+
+                  // Left Revenue values
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 45,
-                      getTitlesWidget: (val, meta) => Text('\$${val.toInt()}',
-                          style:
-                              TextStyle(color: Colors.grey[400], fontSize: 10)),
+
+                      getTitlesWidget:
+                          (val, meta) =>
+                              Text(
+                        '\$${val.toInt()}',
+
+                        style: TextStyle(
+                          color:
+                              Colors.grey[400],
+                          fontSize: 10,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                borderData: FlBorderData(show: false),
+
+                borderData:
+                    FlBorderData(show: false),
+
                 lineBarsData: [
                   LineChartBarData(
                     spots: weekSpots,
+
                     isCurved: true,
+
                     color: primaryGreen,
+
                     barWidth: 4,
+
                     isStrokeCapRound: true,
+
                     dotData: FlDotData(
                       show: true,
-                      getDotPainter: (spot, percent, barData, index) =>
-                          FlDotCirclePainter(
-                              radius: 4,
-                              color: Colors.white,
-                              strokeWidth: 2,
-                              strokeColor: primaryGreen),
+
+                      getDotPainter:
+                          (
+                        spot,
+                        percent,
+                        barData,
+                        index,
+                      ) {
+                        return FlDotCirclePainter(
+                          radius: 4,
+
+                          color: Colors.white,
+
+                          strokeWidth: 2,
+
+                          strokeColor:
+                              primaryGreen,
+                        );
+                      },
                     ),
-                    belowBarData: BarAreaData(
+
+                    belowBarData:
+                        BarAreaData(
                       show: true,
+
                       gradient: LinearGradient(
                         colors: [
-                          primaryGreen.withValues(alpha: 0.2),
-                          primaryGreen.withValues(alpha: 0.0)
+                          primaryGreen.withValues(
+                            alpha: 0.2,
+                          ),
+
+                          primaryGreen.withValues(
+                            alpha: 0.0,
+                          ),
                         ],
-                        begin: Alignment.topCenter,
+
+                        begin:
+                            Alignment.topCenter,
+
                         end: Alignment.bottomCenter,
                       ),
                     ),
@@ -299,69 +625,169 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // ============================================================
+  // Statistics Grid
+  // ============================================================
+
   Widget _buildStatGrid(
-      int total, double revenue, int active, int products, bool isMobile) {
-    return LayoutBuilder(builder: (context, constraints) {
-      int crossAxisCount = constraints.maxWidth < 600
-          ? 1
-          : (constraints.maxWidth < 1100 ? 2 : 4);
-      return GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: 20,
-        mainAxisSpacing: 20,
-        childAspectRatio: isMobile ? 3.2 : 1.7,
-        children: [
-          _buildStatCard("Total Orders", total.toString(),
-              Icons.shopping_basket_outlined, Colors.blue),
-          _buildStatCard("Revenue", "\$${revenue.toStringAsFixed(0)}",
-              Icons.monetization_on_outlined, Colors.orange),
-          _buildStatCard("Active Orders", active.toString(),
-              Icons.pending_actions, primaryGreen),
-          _buildStatCard("Total Products", products.toString(),
-              Icons.restaurant_menu, Colors.purple),
-        ],
-      );
-    });
+    int total,
+    double revenue,
+    int active,
+    int products,
+    bool isMobile,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        int crossAxisCount =
+            constraints.maxWidth < 600
+                ? 1
+                : (constraints.maxWidth < 1100
+                    ? 2
+                    : 4);
+
+        return GridView.count(
+          shrinkWrap: true,
+
+          physics:
+              const NeverScrollableScrollPhysics(),
+
+          crossAxisCount:
+              crossAxisCount,
+
+          crossAxisSpacing: 20,
+
+          mainAxisSpacing: 20,
+
+          childAspectRatio:
+              isMobile ? 3.2 : 1.7,
+
+          children: [
+            // Total Orders
+            _buildStatCard(
+              _tr('total_orders'),
+              total.toString(),
+              Icons.shopping_basket_outlined,
+              Colors.blue,
+            ),
+
+            // Revenue
+            _buildStatCard(
+              _tr('revenue'),
+              "\$${revenue.toStringAsFixed(0)}",
+              Icons.monetization_on_outlined,
+              Colors.orange,
+            ),
+
+            // Active Orders
+            _buildStatCard(
+              _tr('active_orders'),
+              active.toString(),
+              Icons.pending_actions,
+              primaryGreen,
+            ),
+
+            // Total Products
+            _buildStatCard(
+              _tr('total_products'),
+              products.toString(),
+              Icons.restaurant_menu,
+              Colors.purple,
+            ),
+          ],
+        );
+      },
+    );
   }
 
+  // ============================================================
+  // Statistics Card
+  // ============================================================
+
   Widget _buildStatCard(
-      String title, String value, IconData icon, Color color) {
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(20),
+
       decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)
-          ]),
+        color: Colors.white,
+
+        borderRadius:
+            BorderRadius.circular(20),
+
+        boxShadow: [
+          BoxShadow(
+            color:
+                Colors.black.withValues(
+              alpha: 0.02,
+            ),
+
+            blurRadius: 10,
+          ),
+        ],
+      ),
+
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding:
+                const EdgeInsets.all(12),
+
             decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12)),
-            child: Icon(icon, color: color, size: 28),
+              color:
+                  color.withValues(alpha: 0.1),
+
+              borderRadius:
+                  BorderRadius.circular(12),
+            ),
+
+            child: Icon(
+              icon,
+              color: color,
+              size: 28,
+            ),
           ),
+
           const SizedBox(width: 16),
+
           Flexible(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+
               children: [
                 FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(value,
-                        style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black))),
-                Text(title,
-                    style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                    overflow: TextOverflow.ellipsis),
+                  fit: BoxFit.scaleDown,
+
+                  child: Text(
+                    value,
+
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight:
+                          FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+
+                Text(
+                  title,
+
+                  style: TextStyle(
+                    color: Colors.grey[500],
+                    fontSize: 12,
+                  ),
+
+                  overflow:
+                      TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
@@ -370,80 +796,195 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildRecentOrdersSection(BuildContext context, OrderProvider provider,
-      bool isMobile, double screenWidth) {
+  // ============================================================
+  // Recent Orders Section
+  // ============================================================
+
+  Widget _buildRecentOrdersSection(
+    BuildContext context,
+    OrderProvider provider,
+    bool isMobile,
+    double screenWidth,
+  ) {
     return Container(
       padding: const EdgeInsets.all(24),
+
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(20),
+      ),
+
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment:
+                MainAxisAlignment.spaceBetween,
+
             children: [
-              const Text("Recent Orders",
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black)),
+              // Recent Orders
+              Text(
+                _tr('recent_orders'),
+
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight:
+                      FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ),
+
+              // View All
               TextButton(
-                  onPressed: () => context.go('/admin/orders'),
-                  child:
-                      Text("View All", style: TextStyle(color: primaryGreen))),
+                onPressed: () {
+                  context.go(
+                    '/admin/orders',
+                  );
+                },
+
+                child: Text(
+                  _tr('view_all'),
+
+                  style: TextStyle(
+                    color: primaryGreen,
+                  ),
+                ),
+              ),
             ],
           ),
+
           const SizedBox(height: 20),
+
+          // No orders
           if (provider.orders.isEmpty)
-            const Center(
-                child: Text("No orders yet",
-                    style: TextStyle(color: Colors.black)))
+            Center(
+              child: Text(
+                _tr('no_orders_yet'),
+
+                style: const TextStyle(
+                  color: Colors.black54,
+                ),
+              ),
+            )
+
+          // Orders
           else
             ListView.separated(
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+
+              physics:
+                  const NeverScrollableScrollPhysics(),
+
               itemCount:
-                  provider.orders.length > 5 ? 5 : provider.orders.length,
-              separatorBuilder: (context, index) => const Divider(height: 24),
-              itemBuilder: (context, index) {
-                final order = provider.orders[index];
+                  provider.orders.length > 5
+                      ? 5
+                      : provider.orders.length,
+
+              separatorBuilder:
+                  (context, index) =>
+                      const Divider(
+                height: 24,
+              ),
+
+              itemBuilder:
+                  (context, index) {
+                final order =
+                    provider.orders[index];
+
+                final orderNum =
+                    order.dailySequenceNumber !=
+                            null
+                        ? "#${order.dailySequenceNumber.toString().padLeft(3, '0')}"
+                        : "#${order.id.substring(order.id.length - 4).toUpperCase()}";
+
                 return Row(
                   children: [
+                    // Order Icon
                     Container(
                       width: 45,
                       height: 45,
-                      decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.receipt_long_outlined,
-                          color: Colors.black54),
+
+                      decoration:
+                          BoxDecoration(
+                        color:
+                            Colors.grey[100],
+
+                        borderRadius:
+                            BorderRadius.circular(
+                          10,
+                        ),
+                      ),
+
+                      child: const Icon(
+                        Icons
+                            .receipt_long_outlined,
+
+                        color:
+                            Colors.black54,
+                      ),
                     ),
+
                     const SizedBox(width: 12),
+
+                    // Order Information
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+
                         children: [
                           Text(
-                              "#${order.id.substring(order.id.length - 4).toUpperCase()}",
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black)),
-                          Text("Table ${order.tableNumber}",
-                              style: TextStyle(
-                                  fontSize: 12, color: Colors.grey[600])),
+                            orderNum,
+
+                            style:
+                                const TextStyle(
+                              fontWeight:
+                                  FontWeight.bold,
+                              color:
+                                  Colors.black,
+                            ),
+                          ),
+
+                          Text(
+                            "${_tr('table')} ${order.tableNumber}",
+
+                            style: TextStyle(
+                              fontSize: 12,
+                              color:
+                                  Colors.grey[600],
+                            ),
+                          ),
                         ],
                       ),
                     ),
+
+                    // Price + Status
                     Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.end,
+
                       children: [
-                        Text("\$${order.totalPrice.toStringAsFixed(2)}",
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black)),
-                        _statusChip(order.status),
+                        Text(
+                          "\$${order.totalPrice.toStringAsFixed(2)}",
+
+                          style:
+                              const TextStyle(
+                            fontWeight:
+                                FontWeight.bold,
+                            color:
+                                Colors.black,
+                          ),
+                        ),
+
+                        _statusChip(
+                          order.status,
+                        ),
                       ],
-                    )
+                    ),
                   ],
                 );
               },
@@ -453,13 +994,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // ============================================================
+  // Order Status
+  // ============================================================
+
   Widget _statusChip(String status) {
+    final s = status.toLowerCase();
+
     Color color =
-        (status == 'Completed' || status == 'Served' || status == 'Delivered')
+        (s.contains('complete') ||
+                s.contains('served') ||
+                s.contains('paid') ||
+                s.contains('deliv'))
             ? primaryGreen
-            : (status == 'Cancelled' ? Colors.red : Colors.orange);
-    return Text(status,
-        style:
-            TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold));
+            : (s.contains('cancel')
+                ? Colors.red
+                : Colors.orange);
+
+    return Text(
+      status,
+
+      style: TextStyle(
+        color: color,
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+      ),
+    );
   }
 }

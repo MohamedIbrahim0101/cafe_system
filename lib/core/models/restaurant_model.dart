@@ -1,7 +1,5 @@
 // lib/core/models/restaurant_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_firestore/cloud_firestore.dart' as fs;
-import 'package:flutter/material.dart';
 import '../../app/constants.dart';
 
 class Restaurant {
@@ -19,27 +17,46 @@ class Restaurant {
     required this.createdAt,
   });
 
- // lib/core/models/restaurant_model.dart
-factory Restaurant.fromSnapshot(
-    fs.DocumentSnapshot snapshot, {
-    double coverWidth = 400, // default value
+  factory Restaurant.fromSnapshot(
+    DocumentSnapshot snapshot, {
+    double coverWidth = 400,
   }) {
-  final data = snapshot.data() as Map<String, dynamic>;
-  return Restaurant(
-    id: snapshot.id,
-    name: data['name'] ?? 'Premium Restaurant',
-    logoUrl: imageUrlResize(data['logoUrl'], width: 200),
-    coverImageUrl: imageUrlResize(data['coverImageUrl'], width: coverWidth),
-    createdAt: (data['createdAt'] as fs.Timestamp).toDate(),
-  );
-}
+    // 🔥 تحويل آمن للـ data للوقاية من خطأ LegacyJavaScriptObject على Web
+    final rawData = snapshot.data();
+    final Map<String, dynamic> data =
+        rawData != null ? Map<String, dynamic>.from(rawData as Map) : {};
+
+    return Restaurant(
+      id: snapshot.id,
+      name: data['name'] ?? 'Premium Restaurant',
+      logoUrl: imageUrlResize(data['logoUrl'] ?? '', width: 200),
+      coverImageUrl: imageUrlResize(data['coverImageUrl'] ?? '', width: coverWidth),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {
       'name': name,
       'logoUrl': logoUrl,
       'coverImageUrl': coverImageUrl,
-      'createdAt': createdAt,
+      'createdAt': Timestamp.fromDate(createdAt),
     };
+  }
+
+  Restaurant copyWith({
+    String? id,
+    String? name,
+    String? logoUrl,
+    String? coverImageUrl,
+    DateTime? createdAt,
+  }) {
+    return Restaurant(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      logoUrl: logoUrl ?? this.logoUrl,
+      coverImageUrl: coverImageUrl ?? this.coverImageUrl,
+      createdAt: createdAt ?? this.createdAt,
+    );
   }
 }

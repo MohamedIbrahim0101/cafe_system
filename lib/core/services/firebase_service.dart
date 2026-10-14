@@ -26,13 +26,14 @@ class FirebaseService {
   static fs.CollectionReference<Map<String, dynamic>> get tables =>
       _firestore.collection('tables');
 
-  static fs.CollectionReference<Map<String, dynamic>> get orders =>
-      _firestore.collection('orders');
+  // مرجع لطلبات مطعم معين (Sub-collection)
+  static fs.CollectionReference<Map<String, dynamic>> orders(String restaurantId) =>
+      _firestore.collection('restaurants').doc(restaurantId).collection('orders');
 
   // --- Restaurant Methods ---
-  static Future<Restaurant?> getRestaurant() async {
+  static Future<Restaurant?> getRestaurant([String restaurantId = 'default']) async {
     try {
-      final doc = await restaurants.doc('default').get();
+      final doc = await restaurants.doc(restaurantId).get();
       if (doc.exists) {
         return Restaurant.fromSnapshot(doc);
       }
@@ -43,21 +44,22 @@ class FirebaseService {
     }
   }
 
-  // --- Orders Methods ---
-  static Future<void> createOrder(Order order) async {
-    await orders.doc(order.id).set(order.toMap());
+  // --- Orders Methods (Multi-Tenant) ---
+  static Future<void> createOrder(String restaurantId, Order order) async {
+    await orders(restaurantId).doc(order.id).set(order.toMap());
   }
 
-  static Future<void> updateOrderStatus(String orderId, String status) async {
+  static Future<void> updateOrderStatus(String restaurantId, String orderId, String status) async {
     // التأكد من صلاحية المستخدم (الأدمن) قبل التحديث
-    if (_auth.currentUser == null)
+    if (_auth.currentUser == null) {
       throw Exception('Admin authentication required');
-    await orders.doc(orderId).update({'status': status});
+    }
+    await orders(restaurantId).doc(orderId).update({'status': status});
   }
 
-  /// جلب الطلبات بشكل لحظي مع معالجة الأخطاء لكل مستند على حدة
-  static Stream<List<Order>> getOrdersStream() {
-    return orders
+  /// جلب الطلبات بشكل لحظي لمطعم معين مع معالجة الأخطاء لكل مستند على حدة
+  static Stream<List<Order>> getOrdersStream(String restaurantId) {
+    return orders(restaurantId)
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
@@ -76,9 +78,9 @@ class FirebaseService {
     });
   }
 
-  static Future<List<Order>> getOrders({String? status}) async {
+  static Future<List<Order>> getOrders(String restaurantId, {String? status}) async {
     fs.Query<Map<String, dynamic>> query =
-        orders.orderBy('createdAt', descending: true);
+        orders(restaurantId).orderBy('createdAt', descending: true);
     if (status != null) {
       query = query.where('status', isEqualTo: status);
     }

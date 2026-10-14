@@ -1,3 +1,4 @@
+// lib/state/inventory_provider.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,7 +9,7 @@ class SupplierInvoice {
   final String phoneNumber;
   final String productName;
   final double quantity;
-  final double consumedQuantity; // الحقل الجديد لمتابعة النقص المستهلك
+  final double consumedQuantity; // الحقل لمتابعة النقص المستهلك
   final String unit; 
   final double price;
   final DateTime createdAt;
@@ -36,7 +37,10 @@ class SupplierInvoice {
 
   double get totalCost => quantity * price;
 
-  factory SupplierInvoice.fromMap(Map<String, dynamic> map, String docId) {
+  factory SupplierInvoice.fromMap(Map<String, dynamic> rawMap, String docId) {
+    // 🔥 تحويل آمن لمنع خطأ Web Type Casting
+    final map = Map<String, dynamic>.from(rawMap);
+
     return SupplierInvoice(
       id: docId,
       supplierName: map['supplierName'] ?? '',
@@ -67,31 +71,52 @@ class SupplierInvoice {
 class InventoryProvider extends ChangeNotifier {
   List<SupplierInvoice> _invoices = [];
   bool _isLoading = true;
+  String? _restaurantId;
   StreamSubscription<QuerySnapshot>? _invoicesSubscription;
 
   List<SupplierInvoice> get invoices => _invoices;
   bool get isLoading => _isLoading;
+  String? get restaurantId => _restaurantId;
 
   double get totalPurchases {
     return _invoices.fold(0.0, (sum, item) => sum + item.totalCost);
   }
 
-  InventoryProvider() {
-    _initInvoicesStream();
+  InventoryProvider();
+
+  // 🔥 دالة تحديث معرف المطعم المربوطة مع AuthProvider عبر ProxyProvider
+  void updateRestaurantId(String? restaurantId) {
+    if (_restaurantId != restaurantId) {
+      _restaurantId = restaurantId;
+      _initInvoicesStream(); // إعادة جلب فواتير المخزون للمطعم الجديد
+    }
   }
 
   void _initInvoicesStream() {
-    _isLoading = true;
     _invoicesSubscription?.cancel();
 
+    if (_restaurantId == null || _restaurantId!.isEmpty) {
+      _invoices = [];
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+
+    _isLoading = true;
+    notifyListeners();
+
+    // الاستماع لفواتير مطعم محدد فقط لمنع التداخل
     _invoicesSubscription = FirebaseFirestore.instance
+        .collection('restaurants')
+        .doc(_restaurantId)
         .collection('supplier_invoices')
         .orderBy('createdAt', descending: true)
         .snapshots()
         .listen(
       (snapshot) {
         _invoices = snapshot.docs.map((doc) {
-          return SupplierInvoice.fromMap(doc.data(), doc.id);
+          final data = doc.data() as Map<String, dynamic>? ?? {};
+          return SupplierInvoice.fromMap(data, doc.id);
         }).toList();
         _isLoading = false;
         notifyListeners();
@@ -104,6 +129,7 @@ class InventoryProvider extends ChangeNotifier {
     );
   }
 
+  // 🔥 إضافة فاتورة جديدة
   Future<void> addNewInvoice({
     required String supplierName,
     required String phoneNumber,
@@ -112,6 +138,10 @@ class InventoryProvider extends ChangeNotifier {
     required String unit,
     required double price,
   }) async {
+    if (_restaurantId == null || _restaurantId!.isEmpty) {
+      throw Exception("لا يوجد مطعم محدد لإضافة الفاتورة إليه!");
+    }
+
     try {
       final newInvoice = SupplierInvoice(
         id: '', 
@@ -119,32 +149,82 @@ class InventoryProvider extends ChangeNotifier {
         phoneNumber: phoneNumber,
         productName: productName,
         quantity: quantity,
-        consumedQuantity: 0.0, // يبدأ الاستهلاك من صفر عند الشراء الجديد
+        consumedQuantity: 0.0,
         unit: unit,
         price: price,
         createdAt: DateTime.now(),
       );
 
+      final map = newInvoice.toMap();
+      map['createdAt'] = FieldValue.serverTimestamp();
+
       await FirebaseFirestore.instance
+          .collection('restaurants')
+          .doc(_restaurantId)
           .collection('supplier_invoices')
-          .add(newInvoice.toMap());
+          .add(map);
     } catch (e) {
       debugPrint("❌ Error adding supplier invoice: $e");
       rethrow;
     }
   }
 
-  // 🔥 الدالة الحركية الجديدة لتحديث الكمية المنقوصة يدوياً في Firestore
-  Future<void> reduceStockQuantity(String docId, double amountToReduce) async {
+  // 🔥 تعديل فاتورة توريد موجودة
+  Future<void> updateInvoice(SupplierInvoice invoice) async {
+    if (_restaurantId == null || _restaurantId!.isEmpty) return;
+
     try {
-      final docRef = FirebaseFirestore.instance.collection('supplier_invoices').doc(docId);
+      await FirebaseFirestore.instance
+          .collection('restaurants')
+          .doc(_restaurantId)
+          .collection('supplier_invoices')
+          .doc(invoice.id)
+          .update(invoice.toMap());
+    } catch (e) {
+      debugPrint("❌ Error updating invoice: $e");
+      rethrow;
+    }
+  }
+
+  // 🔥 حذف فاتورة توريد
+  Future<void> deleteInvoice(String docId) async {
+    if (_restaurantId == null || _restaurantId!.isEmpty) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('restaurants')
+          .doc(_restaurantId)
+          .collection('supplier_invoices')
+          .doc(docId)
+          .delete();
+    } catch (e) {
+      debugPrint("❌ Error deleting invoice: $e");
+      rethrow;
+    }
+  }
+
+  // 🔥 تحديث الكمية المنقوصة يدوياً داخل Firestore للمطعم المحدد
+  Future<void> reduceStockQuantity(String docId, double amountToReduce) async {
+    if (_restaurantId == null || _restaurantId!.isEmpty) {
+      throw Exception("لا يوجد مطعم محدد الخصم من مخزونه!");
+    }
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('restaurants')
+          .doc(_restaurantId)
+          .collection('supplier_invoices')
+          .doc(docId);
       
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final snapshot = await transaction.get(docRef);
         if (!snapshot.exists) throw Exception("الفاتورة غير موجودة!");
 
-        final currentConsumed = (snapshot.data()?['consumedQuantity'] as num?)?.toDouble() ?? 0.0;
-        final totalQty = (snapshot.data()?['quantity'] as num?)?.toDouble() ?? 0.0;
+        final rawData = snapshot.data();
+        final map = rawData != null ? Map<String, dynamic>.from(rawData) : {};
+
+        final currentConsumed = (map['consumedQuantity'] as num?)?.toDouble() ?? 0.0;
+        final totalQty = (map['quantity'] as num?)?.toDouble() ?? 0.0;
         
         final newConsumed = currentConsumed + amountToReduce;
 

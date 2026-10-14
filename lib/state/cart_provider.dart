@@ -1,4 +1,5 @@
 // lib/state/cart_provider.dart
+
 import 'package:flutter/material.dart';
 import '../core/models/product_model.dart';
 
@@ -7,88 +8,163 @@ class CartItem {
   final String name;
   final String imageUrl;
   final double price;
+  final String? selectedSize;
+  final String productType;
+
   int quantity;
-  String notes; // 🔥 إضافة حقل الملحوظات
+  String notes;
 
   CartItem({
     required this.productId,
     required this.name,
     required this.imageUrl,
     required this.price,
+    this.selectedSize,
     this.quantity = 1,
-    this.notes = "", // قيمة افتراضية فارغة
+    this.notes = "",
+    this.productType = 'food',
   });
 
+  String get cartItemId =>
+      '${productId}_${selectedSize ?? "default"}';
+
   double get total => price * quantity;
+
+  Map<String, dynamic> toMap() => {
+        'productId': productId,
+        'name': name,
+        'imageUrl': imageUrl,
+        'price': price,
+        'selectedSize': selectedSize,
+        'quantity': quantity,
+        'notes': notes,
+        'productType': productType,
+        'total': total,
+      };
 }
 
 class CartProvider extends ChangeNotifier {
   final List<CartItem> _items = [];
+
   int? _tableNumber;
+  String? _restaurantId;
 
   List<CartItem> get items => _items;
+
   int get itemCount => _items.length;
-  
-  int get totalItems => _items.fold(0, (sum, item) => sum + item.quantity);
-  
-  double get totalPrice => _items.fold(0.0, (sum, item) => sum + item.total);
+
+  int get totalItems =>
+      _items.fold(0, (sum, item) => sum + item.quantity);
+
+  double get totalPrice =>
+      _items.fold(0.0, (sum, item) => sum + item.total);
+
+  String? get restaurantId => _restaurantId;
+
+  int? get tableNumber => _tableNumber;
+
+  void setRestaurantId(String? resId) {
+    if (_restaurantId != resId) {
+      _restaurantId = resId;
+      _items.clear();
+      notifyListeners();
+    }
+  }
 
   set tableNumber(int? table) {
     _tableNumber = table;
     notifyListeners();
   }
 
-  int? get tableNumber => _tableNumber;
+  void add(
+    Product product, {
+    String? targetRestaurantId,
+    String? selectedSize,
+    double? customPrice,
+    String notes = "",
+  }) {
+    if (targetRestaurantId != null &&
+        targetRestaurantId != _restaurantId) {
+      _restaurantId = targetRestaurantId;
+      _items.clear();
+    }
 
-  // --- العمليات على السلة ---
+    final double effectivePrice = customPrice ??
+        (selectedSize != null &&
+                product.sizes.containsKey(selectedSize)
+            ? product.sizes[selectedSize]!
+            : product.price);
 
-  void add(Product product) {
-    final existingIndex = _items.indexWhere((item) => item.productId == product.id);
-    
+    final String targetCartItemId =
+        '${product.id}_${selectedSize ?? "default"}';
+
+    final existingIndex = _items.indexWhere(
+      (item) => item.cartItemId == targetCartItemId,
+    );
+
     if (existingIndex >= 0) {
       _items[existingIndex].quantity++;
+
+      if (notes.isNotEmpty) {
+        _items[existingIndex].notes = notes;
+      }
     } else {
-      _items.add(CartItem(
-        productId: product.id,
-        name: product.name,
-        imageUrl: product.imageUrl,
-        price: product.price,
-      ));
+      _items.add(
+        CartItem(
+          productId: product.id,
+          name: product.name,
+          imageUrl: product.imageUrl,
+          price: effectivePrice,
+          selectedSize: selectedSize,
+          notes: notes,
+          productType: product.productType
+              .toLowerCase()
+              .trim(),
+        ),
+      );
     }
+
     notifyListeners();
   }
 
-  // 🔥 الدالة السحرية لتحديث الملحوظات من الـ CartScreen
-  void updateItemNote(String productId, String newNote) {
-    final index = _items.indexWhere((item) => item.productId == productId);
+  void updateItemNote(String cartItemId, String newNote) {
+    final index = _items.indexWhere(
+      (item) => item.cartItemId == cartItemId,
+    );
+
     if (index >= 0) {
       _items[index].notes = newNote;
-      // لا نحتاج دائماً لـ notifyListeners هنا إذا كان الـ TextField 
-      // يتم التحكم به محلياً، لكن يفضل وضعها لضمان تحديث الـ UI
-      notifyListeners(); 
+      notifyListeners();
     }
   }
 
-  void updateQuantity(String productId, int qty) {
-    final index = _items.indexWhere((item) => item.productId == productId);
+  void updateQuantity(String cartItemId, int qty) {
+    final index = _items.indexWhere(
+      (item) => item.cartItemId == cartItemId,
+    );
+
     if (index >= 0) {
       if (qty <= 0) {
         _items.removeAt(index);
       } else {
         _items[index].quantity = qty;
       }
+
       notifyListeners();
     }
   }
 
-  void remove(String productId) {
-    _items.removeWhere((item) => item.productId == productId);
+  void remove(String cartItemId) {
+    _items.removeWhere(
+      (item) => item.cartItemId == cartItemId,
+    );
+
     notifyListeners();
   }
 
   void clear() {
     _items.clear();
-    _tableNumber = null; // اختياري: تصغير رقم الطاولة عند مسح السلة
+    _tableNumber = null;
     notifyListeners();
   }
 }

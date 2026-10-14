@@ -1,24 +1,28 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class CategoryModel { // غيرنا الاسم هنا ليتطابق مع الـ Provider والـ Screen
+class CategoryModel {
   final String id;
   final String name;
-  final String? imageUrl; // أضفنا هذا الحقل لعرض الصور
+  final String? imageUrl;
   final DateTime createdAt;
 
   CategoryModel({
     required this.id, 
     required this.name, 
     this.imageUrl, 
-    required this.createdAt
+    required this.createdAt,
   });
 
   factory CategoryModel.fromSnapshot(DocumentSnapshot snapshot) {
-    final data = snapshot.data() as Map<String, dynamic>;
+    // 🔥 تحويل آمن للـ data لمنع خطأ Web Type Cast (LegacyJavaScriptObject)
+    final rawData = snapshot.data();
+    final Map<String, dynamic> data =
+        rawData != null ? Map<String, dynamic>.from(rawData as Map) : {};
+
     return CategoryModel(
       id: snapshot.id,
       name: data['name'] ?? 'Unnamed Category',
-      imageUrl: data['imageUrl'], // استقبال رابط الصورة من فيربيز
+      imageUrl: data['imageUrl'] as String?,
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
@@ -28,6 +32,6 @@ class CategoryModel { // غيرنا الاسم هنا ليتطابق مع الـ
   Map<String, dynamic> toMap() => {
     'name': name, 
     'imageUrl': imageUrl, 
-    'createdAt': createdAt
+    'createdAt': Timestamp.fromDate(createdAt),
   };
 }

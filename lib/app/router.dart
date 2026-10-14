@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:premium_store/admin/screens/inventory_management_screen.dart';
-import 'package:premium_store/admin/screens/stock_control.dart';
+import 'package:premium_store/super_admin/screens/super_admin_dashboard.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+// --- Imports Base ---
+import 'package:premium_store/admin/screens/inventory_management_screen.dart';
+import 'package:premium_store/admin/screens/stock_control.dart';
 
 // --- Client Screens ---
 import '../client/screens/splash_screen.dart';
 import '../client/screens/menu_screens.dart';
-import '../client/screens/product_detail_screen.dart'; // تأكد من مطابقة الاسم عندك
+import '../client/screens/product_detail_screen.dart';
 import '../client/screens/cart_screen.dart';
 import '../client/screens/order_status_screen.dart';
 
@@ -21,6 +24,8 @@ import '../admin/screens/tables_screen.dart';
 import '../admin/screens/pos_screen.dart';
 import '../admin/screens/add_product_screen.dart';
 
+// --- Super Admin Screens (يتم تعديل المسار حسب مشروعك) ---
+
 // --- State & Models ---
 import '../state/auth_brovider.dart';
 import '../core/models/product_model.dart';
@@ -28,9 +33,40 @@ import '../core/models/product_model.dart';
 class AppRouter {
   late final GoRouter router;
 
-  AppRouter() {
+  AppRouter(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
     router = GoRouter(
       initialLocation: '/splash',
+      // ربط التغييرات في AuthProvider فوراً بالراوتر لمنع الـ Lag
+      refreshListenable: authProvider,
+      redirect: (context, state) {
+        final isLoggedIn = authProvider.user != null;
+        final isLoggingIn = state.matchedLocation == '/admin/login';
+        final isSuperAdmin = authProvider.isSuperAdmin; // افترضنا وجود الخصائص في البروفايدر
+
+        // إذا لم يكن مسجلاً ودخل على مسار محمي للأدمن أو السوبر أدمن
+        final isAdminRoute = state.matchedLocation.startsWith('/admin') ||
+            state.matchedLocation.startsWith('/super-admin');
+
+        if (!isLoggedIn && isAdminRoute && !isLoggingIn) {
+          return '/admin/login';
+        }
+
+        // إذا كان مسجلاً ويحاول فتح صفحة تسجيل الدخول
+        if (isLoggedIn && isLoggingIn) {
+          return isSuperAdmin ? '/super-admin/dashboard' : '/admin/dashboard';
+        }
+
+        // حماية مسارات الـ Super Admin من أدمن المطعم العادي
+        if (isLoggedIn &&
+            state.matchedLocation.startsWith('/super-admin') &&
+            !isSuperAdmin) {
+          return '/admin/dashboard';
+        }
+
+        return null;
+      },
       routes: [
         // 1. Splash Screen
         GoRoute(
@@ -39,98 +75,191 @@ class AppRouter {
         ),
 
         // --------------------------------------------------------
-        // --- مسارات العميل (Client Routes) - الجزء الخاص بك ---
+        // --- مسارات العميل (Client Routes) ---
         // --------------------------------------------------------
-        GoRoute(
-          path: '/menu',
-          builder: (context, state) {
-            final tableStr = state.uri.queryParameters['table'];
-            final tableNumber = int.tryParse(tableStr ?? '');
-            if (tableNumber == null) {
-              return const Scaffold(
-                body: Center(
-                  child: Text(
-                    'Scan Table QR Code',
-                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              );
-            }
-            return MenuScreen(tableNumber: tableNumber);
-          },
+       GoRoute(
+  path: '/menu',
+  builder: (context, state) {
+    // 1. قراءة الـ restaurantId والـ table من الـ QR
+    final restaurantId = state.uri.queryParameters['restaurantId'];
+    final tableStr = state.uri.queryParameters['table'];
+    final tableNumber = int.tryParse(tableStr ?? '');
+
+    // 2. التحقق من وجود الاثنين
+    if (restaurantId == null || tableNumber == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text(
+            'Please scan a valid Table QR Code',
+            style: TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
-        GoRoute(
-          path: '/product/:id',
-          builder: (context, state) {
-            final id = state.pathParameters['id']!;
-            final tableNumber = int.tryParse(state.uri.queryParameters['table'] ?? '0');
-            return ProductDetailsScreen(productId: id, tableNumber: tableNumber!);
-          },
-        ),
-        GoRoute(
-          path: '/cart',
-          builder: (context, state) {
-            final tableNumber = int.tryParse(state.uri.queryParameters['table'] ?? '0');
-            return CartScreen(tableNumber: tableNumber!);
-          },
-        ),
+      );
+    }
+
+    // 3. تمرير الـ restaurantId إلى MenuScreen
+    return MenuScreen(
+      restaurantId: restaurantId, 
+      tableNumber: tableNumber,
+    );
+  },
+),// مسار تفاصيل المنتج
+GoRoute(
+  path: '/product/:id',
+  builder: (context, state) {
+    final id = state.pathParameters['id']!;
+    // 1. استخراج restaurantId و table من الـ queryParameters
+    final restaurantId = state.uri.queryParameters['restaurantId'] ?? '';
+    final tableNumber = int.tryParse(state.uri.queryParameters['table'] ?? '0') ?? 0;
+
+    return ProductDetailsScreen(
+      productId: id,
+      restaurantId: restaurantId, // <-- تم تعريفها بالسطر الأعلى
+      tableNumber: tableNumber,
+    );
+  },
+),
+
+// مسار السلة
+GoRoute(
+  path: '/cart',
+  builder: (context, state) {
+    // 1. استخراج restaurantId و table من الـ queryParameters
+    final restaurantId = state.uri.queryParameters['restaurantId'] ?? '';
+    final tableNumber = int.tryParse(state.uri.queryParameters['table'] ?? '0') ?? 0;
+
+    return CartScreen(
+      restaurantId: restaurantId, // <-- إرسال المتغير المطلوب
+      tableNumber: tableNumber,
+    );
+  },
+),
         GoRoute(
           path: '/order-status/:orderId',
-          builder: (context, state) =>
-              OrderStatusScreen(orderId: state.pathParameters['orderId']!),
+          builder: (context, state) => OrderStatusScreen(
+            orderId: state.pathParameters['orderId']!,
+          ),
         ),
 
         // --------------------------------------------------------
-        // --- مسارات الأدمن (Admin Routes) - لوحة التحكم ---
+        // --- تسجيل الدخول (Login) ---
         // --------------------------------------------------------
         GoRoute(
           path: '/admin/login',
           builder: (context, state) => const LoginScreen(),
         ),
 
-        // مسارات محمية (تتطلب تسجيل دخول)
-        _adminRoute('/admin/dashboard', (state) => const DashboardScreen()),
-        _adminRoute('/admin/orders', (state) => const OrdersScreen()),
-        _adminRoute('/admin/products', (state) => const ProductsScreen()),
-        _adminRoute('/admin/categories', (state) => const CategoriesScreen()),
-        _adminRoute('/admin/tables', (state) => const TablesScreen()),
-        _adminRoute('/admin/pos', (state) => const POSScreen()),
-        _adminRoute('/admin/inventory', (state) => const InventoryManagementScreen()),
-        _adminRoute('/admin/stock-control', (state) => const StockControlScreen()),
-        // مسارات الإضافة والتعديل للمنتجات
-        _adminRoute('/admin/add-product', (state) => const AddProductScreen()),
-        _adminRoute('/admin/edit-product', (state) {
-          final product = state.extra as Product?;
-          return AddProductScreen(product: product);
-        }),
-      ],
-    );
-  }
+        // --------------------------------------------------------
+        // --- مسارات الأدمن (Restaurant Admin Routes) ---
+        // --------------------------------------------------------
+        GoRoute(
+          path: '/admin/dashboard',
+          builder: (context, state) => const DashboardScreen(),
+        ),
+        GoRoute(
+          path: '/admin/orders',
+          builder: (context, state) => const OrdersScreen(),
+        ),
+        GoRoute(
+          path: '/admin/products',
+          builder: (context, state) => const ProductsScreen(),
+        ),
+        GoRoute(
+  path: '/admin/add-product',
+  builder: (context, state) {
+    return const AddProductScreen();
+  },
+),
 
-  // دالة الحماية (Middleware) لصفحات الأدمن
-  GoRoute _adminRoute(String path, Widget Function(GoRouterState state) builder) {
-    return GoRoute(
-      path: path,
-      builder: (context, state) => builder(state),
-      redirect: (context, state) {
-        final auth = context.read<AuthProvider>();
-        return auth.user == null ? '/admin/login' : null;
-      },
+GoRoute(
+  path: '/admin/edit-product',
+  builder: (context, state) {
+    final product = state.extra as Product?;
+
+    return AddProductScreen(
+      product: product,
+    );
+  },
+),
+        GoRoute(
+          path: '/admin/categories',
+          builder: (context, state) => const CategoriesScreen(),
+        ),
+        GoRoute(
+          path: '/admin/tables',
+          builder: (context, state) => const TablesScreen(),
+        ),
+        GoRoute(
+          path: '/admin/pos',
+          builder: (context, state) => const POSScreen(),
+        ),
+        GoRoute(
+          path: '/admin/inventory',
+          builder: (context, state) => const InventoryManagementScreen(),
+        ),
+        GoRoute(
+          path: '/admin/stock-control',
+          builder: (context, state) => const StockControlScreen(),
+        ),
+        GoRoute(
+          path: '/admin/add-product',
+          builder: (context, state) => const AddProductScreen(),
+        ),
+        GoRoute(
+          path: '/admin/edit-product',
+          builder: (context, state) {
+            final product = state.extra as Product?;
+            return AddProductScreen(product: product);
+          },
+          
+        ),
+
+        // --------------------------------------------------------
+        // --- مسارات السوبر أدمن (Super Admin Routes) ---
+        // --------------------------------------------------------
+        GoRoute(
+          path: '/super-admin/dashboard',
+          builder: (context, state) => const SuperAdminDashboardScreen(),
+        ),
+      ],
     );
   }
 }
 
 // --------------------------------------------------------
-// --- شاشة تسجيل الدخول (Admin Login) ---
+// --- شاشة تسجيل الدخول (Login Screen) ---
 // --------------------------------------------------------
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  late final TextEditingController _emailController;
+  late final TextEditingController _passController;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController();
+    _passController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final emailController = TextEditingController();
-    final passController = TextEditingController();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -141,14 +270,25 @@ class LoginScreen extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                child: const Icon(Icons.admin_panel_settings_rounded, size: 80, color: Colors.black),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.admin_panel_settings_rounded,
+                  size: 80,
+                  color: Colors.black,
+                ),
               ),
               const SizedBox(height: 24),
               Text(
-                "ADMIN LOGIN",
+                "SYSTEM LOGIN",
                 style: GoogleFonts.poppins(
-                    fontSize: 24, fontWeight: FontWeight.w900, color: Colors.black, letterSpacing: 1.5),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black,
+                  letterSpacing: 1.5,
+                ),
               ),
               const SizedBox(height: 40),
               Container(
@@ -157,16 +297,21 @@ class LoginScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20)],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 20,
+                    )
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _inputLabel("EMAIL ADDRESS"),
-                    _buildTextField(emailController, Icons.email_outlined, false),
+                    _buildTextField(_emailController, Icons.email_outlined, false),
                     const SizedBox(height: 20),
                     _inputLabel("PASSWORD"),
-                    _buildTextField(passController, Icons.lock_outline, true),
+                    _buildTextField(_passController, Icons.lock_outline, true),
                     const SizedBox(height: 30),
                     SizedBox(
                       width: double.infinity,
@@ -174,34 +319,69 @@ class LoginScreen extends StatelessWidget {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.black,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         onPressed: authProvider.loading
                             ? null
                             : () async {
-                                if (emailController.text.isEmpty || passController.text.isEmpty) {
-                                  _showStatus(context, "Please enter all fields", isError: true);
+                                final email = _emailController.text.trim();
+                                final password = _passController.text;
+
+                                if (email.isEmpty || password.isEmpty) {
+                                  _showStatus(
+                                    context,
+                                    "Please enter all fields",
+                                    isError: true,
+                                  );
                                   return;
                                 }
+
                                 try {
-                                  await authProvider.login(
-                                      emailController.text.trim(), passController.text);
+                                  await authProvider.login(email, password);
+
+                                  if (!context.mounted) return;
+
                                   if (authProvider.user != null) {
-                                    if (context.mounted) {
-                                      _showStatus(context, "Welcome Back!", isError: false);
+                                    _showStatus(
+                                      context,
+                                      "Welcome Back!",
+                                      isError: false,
+                                    );
+
+                                    // التوجيه التلقائي بناءً على الصلاحية لمنع الـ Lag
+                                    if (authProvider.isSuperAdmin) {
+                                      context.go('/super-admin/dashboard');
+                                    } else {
                                       context.go('/admin/dashboard');
                                     }
                                   } else {
-                                    if (context.mounted) _showStatus(context, "Invalid Login", isError: true);
+                                    _showStatus(
+                                      context,
+                                      "Invalid Login Credentials",
+                                      isError: true,
+                                    );
                                   }
                                 } catch (e) {
-                                  if (context.mounted) _showStatus(context, "Error: $e", isError: true);
+                                  if (context.mounted) {
+                                    _showStatus(
+                                      context,
+                                      "Error: $e",
+                                      isError: true,
+                                    );
+                                  }
                                 }
                               },
                         child: authProvider.loading
                             ? const CircularProgressIndicator(color: Colors.white)
-                            : const Text("LOGIN TO DASHBOARD",
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            : const Text(
+                                "LOGIN TO DASHBOARD",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                     ),
                   ],
@@ -217,12 +397,19 @@ class LoginScreen extends StatelessWidget {
   Widget _inputLabel(String label) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, left: 4),
-      child: Text(label,
-          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 12)),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.black,
+          fontWeight: FontWeight.w900,
+          fontSize: 12,
+        ),
+      ),
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, IconData icon, bool isPass) {
+  Widget _buildTextField(
+      TextEditingController controller, IconData icon, bool isPass) {
     return TextField(
       controller: controller,
       obscureText: isPass,
@@ -231,8 +418,11 @@ class LoginScreen extends StatelessWidget {
         prefixIcon: Icon(icon, color: Colors.black, size: 20),
         filled: true,
         fillColor: const Color(0xFFF5F5F5),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        hintText: isPass ? "••••••••" : "admin@restaurant.com",
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        hintText: isPass ? "••••••••" : "user@domain.com",
         hintStyle: const TextStyle(color: Colors.black26, fontSize: 14),
       ),
     );
@@ -241,11 +431,19 @@ class LoginScreen extends StatelessWidget {
   void _showStatus(BuildContext context, String msg, {required bool isError}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        content: Text(
+          msg,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
         backgroundColor: isError ? Colors.redAccent : Colors.green,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
       ),
     );
   }

@@ -1,17 +1,30 @@
+// lib/app/sidebar.dart
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+
 import 'package:premium_store/state/auth_brovider.dart';
+import 'package:premium_store/state/language_provider.dart';
+import 'package:premium_store/localization/app_translations.dart';
 
 class AdminSidebar extends StatelessWidget {
   const AdminSidebar({super.key});
 
-  final Color primaryGreen = const Color(0xFF00B686);
+  static const Color primaryGreen = Color(0xFF00B686);
 
   @override
   Widget build(BuildContext context) {
-    // حل مشكلة الـ GoRouterState: نستخدم try/catch أو نعتمد على GoRouter للوصول للـ location
-    String location = "";
+    // متابعة اللغة الحالية
+    final languageProvider = context.watch<LanguageProvider>();
+
+    // الحصول على كود اللغة الحالية
+    // ar = عربي
+    // de = ألماني
+    final languageCode = languageProvider.locale.languageCode;
+
+    String location = '';
+
     try {
       location = GoRouter.of(context)
           .routerDelegate
@@ -19,27 +32,33 @@ class AdminSidebar extends StatelessWidget {
           .last
           .matchedLocation;
     } catch (e) {
-      location = "/"; // Fallback لو حصل مشكلة في الـ context
+      location = '/';
     }
 
     final authProvider = context.read<AuthProvider>();
 
     return Container(
       width: 260,
-      height: double.infinity, // لضمان أخذ كامل الارتفاع ومنع الـ Overflow
+      height: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
-          right: BorderSide(color: Colors.grey.withOpacity(0.1)),
+          right: BorderSide(
+            color: Colors.grey.withOpacity(0.1),
+          ),
         ),
       ),
       child: Column(
         children: [
-          // Logo Section
+          // =========================
+          // Logo
+          // =========================
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40),
-            child: Text(
-              "Premium.",
+            padding: const EdgeInsets.symmetric(
+              vertical: 40,
+            ),
+            child: const Text(
+              'Premium.',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
@@ -48,7 +67,9 @@ class AdminSidebar extends StatelessWidget {
             ),
           ),
 
-          // Sidebar Items - الأفضل نضعهم في ScrollView عشان لو الشاشة صغيرة
+          // =========================
+          // Menu
+          // =========================
           Expanded(
             child: SingleChildScrollView(
               child: Column(
@@ -56,82 +77,161 @@ class AdminSidebar extends StatelessWidget {
                   _sidebarItem(
                     context,
                     icon: Icons.grid_view_rounded,
-                    label: "Dashboard",
-                    route: "/admin/dashboard",
-                    isActive: location.contains("dashboard"),
+                    label: AppTranslations.get(
+                      languageCode,
+                      'dashboard',
+                    ),
+                    route: '/admin/dashboard',
+                    isActive: location == '/admin/dashboard',
                   ),
                   _sidebarItem(
                     context,
                     icon: Icons.shopping_bag_outlined,
-                    label: "Orders",
-                    route: "/admin/orders",
-                    isActive: location.contains("orders"),
+                    label: AppTranslations.get(
+                      languageCode,
+                      'orders',
+                    ),
+                    route: '/admin/orders',
+                    isActive: location == '/admin/orders',
                   ),
                   _sidebarItem(
                     context,
                     icon: Icons.shopping_cart_checkout,
-                    label: "Cashier (POS)",
-                    route: "/admin/pos",
-                    isActive: location.contains("pos"),
+                    label: AppTranslations.get(
+                      languageCode,
+                      'pos',
+                    ),
+                    route: '/admin/pos',
+                    isActive: location == '/admin/pos',
                   ),
                   _sidebarItem(
                     context,
                     icon: Icons.fastfood_outlined,
-                    label: "Products",
-                    route: "/admin/products",
-                    isActive: location.contains("products"),
+                    label: AppTranslations.get(
+                      languageCode,
+                      'products',
+                    ),
+                    route: '/admin/products',
+                    isActive: location == '/admin/products',
                   ),
                   _sidebarItem(
                     context,
                     icon: Icons.table_restaurant_rounded,
-                    label: "Tables",
-                    route: "/admin/tables",
-                    isActive: location.contains("tables"),
+                    label: AppTranslations.get(
+                      languageCode,
+                      'tables',
+                    ),
+                    route: '/admin/tables',
+                    isActive: location == '/admin/tables',
                   ),
                   _sidebarItem(
                     context,
                     icon: Icons.category_rounded,
-                    label: "Categories",
-                    route: "/admin/categories",
-                    isActive: location.contains("categories"),
+                    label: AppTranslations.get(
+                      languageCode,
+                      'categories',
+                    ),
+                    route: '/admin/categories',
+                    isActive: location == '/admin/categories',
                   ),
-                   _sidebarItem(
+                  _sidebarItem(
                     context,
-                    icon: Icons.category_rounded,
-                    label: "inventory",
-                    route: "/admin/inventory",
-                    isActive: location.contains("InventoryManagementScreen"),
+                    icon: Icons.inventory_2_outlined,
+                    label: AppTranslations.get(
+                      languageCode,
+                      'inventory',
+                    ),
+                    route: '/admin/inventory',
+                    isActive: location == '/admin/inventory',
                   ),
-                   _sidebarItem(
+                  _sidebarItem(
                     context,
-                    icon: Icons.category_rounded,
-                    label: "stock control",
-                    route: "/admin/stock-control",
-                    isActive: location.contains("StockControlScreen"),
+                    icon: Icons.warehouse_outlined,
+                    label: AppTranslations.get(
+                      languageCode,
+                      'stock_control',
+                    ),
+                    route: '/admin/stock-control',
+                    isActive: location == '/admin/stock-control',
                   ),
                 ],
               ),
             ),
           ),
 
+          // =========================
+          // Language Button
+          // =========================
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 4,
+            ),
+            child: ListTile(
+              onTap: () async {
+                await languageProvider.toggleLanguage();
+              },
+              mouseCursor: SystemMouseCursors.click,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+              ),
+              leading: Icon(
+                Icons.language_rounded,
+                color: primaryGreen,
+                size: 22,
+              ),
+              title: Text(
+                AppTranslations.get(
+                  languageCode,
+                  'language',
+                ),
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.normal,
+                  fontSize: 14,
+                ),
+              ),
+              trailing: Text(
+                languageProvider.isArabic ? 'Deutsch' : 'العربية',
+                style: const TextStyle(
+                  color: primaryGreen,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+
           const Divider(),
 
-          // Logout Button
+          // =========================
+          // Logout
+          // =========================
           _sidebarItem(
             context,
             icon: Icons.logout_rounded,
-            label: "Logout",
-            route: "/login",
+            label: AppTranslations.get(
+              languageCode,
+              'logout',
+            ),
+            route: '/admin/login',
             isActive: false,
             isLogout: true,
             auth: authProvider,
           ),
+
           const SizedBox(height: 20),
         ],
       ),
     );
   }
 
+  // =========================
+  // Sidebar Item
+  // =========================
   Widget _sidebarItem(
     BuildContext context, {
     required IconData icon,
@@ -142,23 +242,57 @@ class AdminSidebar extends StatelessWidget {
     AuthProvider? auth,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 2,
+      ),
       child: ListTile(
         onTap: () async {
-          // إغلاق الـ Drawer فوراً إذا كان مفتوحاً (مهم جداً للويب والموبايل)
-          if (Scaffold.of(context).isDrawerOpen) {
-            Navigator.pop(context);
+          final scaffoldState = Scaffold.maybeOf(context);
+
+          // إغلاق Drawer إذا كان مفتوحًا
+          if (scaffoldState != null && scaffoldState.isDrawerOpen) {
+            Navigator.of(context).pop();
           }
 
+          // =========================
+          // Logout
+          // =========================
           if (isLogout) {
-            await auth?.logout();
-            if (context.mounted) context.go('/login');
-          } else {
-            context.go(route);
+            try {
+              await auth?.logout();
+
+              if (!context.mounted) {
+                return;
+              }
+
+              context.go('/admin/login');
+            } catch (e) {
+              debugPrint(
+                'Logout Error: $e',
+              );
+            }
+
+            return;
           }
+
+          // =========================
+          // Navigation
+          // =========================
+          if (!context.mounted) {
+            return;
+          }
+
+          debugPrint(
+            'Navigating to: $route',
+          );
+
+          context.go(route);
         },
         mouseCursor: SystemMouseCursors.click,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+        ),
         leading: Icon(
           icon,
           color: isActive ? primaryGreen : Colors.grey[600],

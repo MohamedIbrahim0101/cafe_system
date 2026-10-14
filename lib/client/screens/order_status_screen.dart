@@ -42,8 +42,21 @@ class OrderStatusScreen extends StatelessWidget {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.black, size: 22),
-          onPressed: () => context.go('/'),
-        ),
+onPressed: () {
+  final order = context
+      .read<OrderProvider>()
+      .getOrderById(orderId);
+
+  if (order != null) {
+    context.go(
+      '/menu?restaurantId=${Uri.encodeComponent(
+        context.read<OrderProvider>().restaurantId ?? '',
+      )}&table=${order.tableNumber}',
+    );
+  } else {
+    context.pop();
+  }
+},        ),
         title: const Text(
           'LIVE ORDER STATUS',
           style: TextStyle(
